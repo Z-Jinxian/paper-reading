@@ -1,0 +1,19 @@
+{
+  "categories": [
+    {
+      "id": "extended",
+      "label": "未分类",
+      "question": "",
+      "description": ""
+    },
+    {
+      "id": "examples",
+      "label": "演示笔记",
+      "question": "",
+      "description": ""
+    }
+  ],
+  "papers": [
+    { "id": "gradient-descent-demo" }
+  ]
+}

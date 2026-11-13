@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="description" content="按专题和方法标签检索。每篇都有原文截图、核心公式、数学抽象和数值例子。">
+  <title>论文阅读</title>
+  <link rel="stylesheet" href="/notebook.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">跳到正文</a>
+<header class="masthead">
+  <div class="shell masthead-inner">
+    <a class="brand" href="#top" aria-label="论文阅读，回到顶部"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span> 论文阅读</a>
+    <nav class="mast-nav" aria-label="快捷跳转"><a class="mast-link" href="#contents">目录</a><a class="mast-link" href="/manage">管理论文</a></nav>
+  </div>
+</header>
+<div class="hero" id="top">
+  <div class="shell hero-inner">
+    <div class="hero-copy">
+
+      <h1>论文阅读</h1><p>沿着原文读章节，拆开核心公式，再用一组数字算到底。</p>
+      <div class="hero-actions">
+        <a class="hero-cta" href="#recommendations">进入论文库 <span aria-hidden="true">↓</span></a>
+        <a class="secondary-action" href="/manage/new">新增论文</a><span class="edition">@@PAPER_COUNT@@ 篇精读 · @@TOPIC_COUNT@@ 个专题</span>
+      </div>
+    </div>
+  </div>
+</div>
+  <div class="shell notebook-layout">
+<aside class="rail">
+  <nav aria-label="页内目录">
+    <div class="rail-title">目录</div>
+    <a class="rail-main" href="#contents">笔记目录</a>
+    <a class="rail-main" href="#criteria">选文规则</a>
+    <a class="rail-main" href="#recommendations">论文库</a>
+    <div class="rail-topic-links"><!-- RAIL_TOPICS --></div>
+  </nav>
+</aside>
+    <main id="main">
+<section class="page-section contents" id="contents" aria-labelledby="contents-title">
+  <header class="section-heading">
+
+    <h2 id="contents-title">目录</h2>
+  </header>
+  <nav class="primary-toc" aria-label="笔记主目录">
+    <a href="#criteria">选文规则</a>
+    <a href="#recommendations">论文库</a>
+  </nav>
+  <nav class="topic-toc" aria-label="专题目录"><!-- TOPIC_LINKS --></nav>
+</section>
+<section class="page-section" id="criteria" aria-labelledby="criteria-title">
+  <header class="section-heading">
+
+    <h2 id="criteria-title">选文规则</h2>
+    <p>每个专题只留三篇。三篇覆盖不同问题，每篇同时说明时间、权威来源和非读不可的理由。</p>
+  </header>
+  <div class="criteria-grid">
+    <article><h3>新</h3><p>先找近半年，候选不足时扩到近一年。正式会议或期刊日期与预印本首次公开分开看。卷宗后来上线时，仍保留首次公开日期。</p></article>
+    <article><h3>权威</h3><p>优先核对 ICML、NeurIPS、ICLR、ACL、CVPR 等主会，或领域标杆期刊与有代表作的研究团队。区分主会、Findings、工作坊和预印本。公司或学校名字只提供一条线索。</p></article>
+    <article><h3>重要</h3><p>优先改变一个关键实验决策的论文。看对照是否公平、哪些场景验证过、结果有没有可核查的后续采用。新作的引用数需要积累时间，社区讨论用来发现线索。</p></article>
+  </div>
+  <p class="rule-foot"><strong>经典例外</strong> 每专题最多留一篇。仅在奠定概念、建立核心基线或已有长期独立使用证据时跨时间线，并逐篇写理由。以选文当日为时间基准，注明正式发表和首次公开的日期。</p>
+</section>
+<section class="page-section catalog" id="recommendations" aria-labelledby="catalog-title">
+  <header class="section-heading catalog-heading">
+    <div><h2 id="catalog-title">论文库</h2></div>
+    <div class="catalog-actions">
+      <div class="catalog-count">@@TOPIC_COUNT@@ 个专题 · @@PAPER_COUNT@@ 篇</div>
+      <button class="secondary-action" type="button" data-create-topic>新建专题</button>
+    </div>
+  </header>
+  <p class="catalog-intro">用专题或方法标签缩小范围，再点开论文看原文证据、数学写法和手算。</p>
+  <!-- PAPER_TOOLS --><!-- PAPER_GROUPS --></section>
+    </main>
+  </div>
+  <!-- LIBRARY_DIALOGS -->
+  <script src="/catalogue.js" defer></script>
+  <script src="/manage.js" defer></script>
+</body>
+</html>

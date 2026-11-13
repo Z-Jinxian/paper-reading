@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1794452516416,
+      "tag": "0000_moaning_aaron_stack",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1794453116513,
+      "tag": "0001_model_profiles",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1794455631774,
+      "tag": "0002_paper_topics",
+      "breakpoints": true
+    }
+  ]
+}

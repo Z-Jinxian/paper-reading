@@ -1,0 +1,36 @@
+{
+  "name": "paper-reading",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": "^22.13.0 || >=24.0.0"
+  },
+  "scripts": {
+    "db:local": "wrangler d1 migrations apply DB --local --config wrangler.jsonc",
+    "db:generate": "drizzle-kit generate",
+    "dev": "node scripts/copy-pdf-engine.mjs && vite",
+    "build": "node scripts/copy-pdf-engine.mjs && vite build",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "drizzle-orm": "0.45.2",
+    "katex": "0.19.1",
+    "pdfjs-dist": "6.5.438"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "1.37.1",
+    "@cloudflare/workers-types": "4.20260515.1",
+    "@types/node": "22.19.19",
+    "drizzle-kit": "0.31.10",
+    "typescript": "5.9.3",
+    "vite": "8.0.13",
+    "wrangler": "4.92.0"
+  },
+  "overrides": {
+    "miniflare": {
+      "sharp": "0.35.4"
+    }
+  }
+}
