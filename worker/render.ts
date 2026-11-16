@@ -3,6 +3,7 @@ import katex from "katex";
 import home from "../content/index-template.html?raw";
 import { isComplete } from "./papers";
 import { readingSkillBody, readingSkillFilePath, readingSkillPath } from "./reading-skill";
+import { groupReadingFormulas } from "./reading-order";
 import type { Category, Evidence, Example, Formula, Note, Paper, Section } from "./types";
 
 const escape = (value: unknown) => String(value ?? "").replace(/[&<>"']/g, (c) => ({
@@ -61,25 +62,21 @@ function screenshot(item: Evidence, note: Note, label: string) {
   </figure>`;
 }
 
-function chapter(item: Section, note: Note) {
+function chapter(item: Section, note: Note, related: string) {
   const firstSourcePage = item.passagePages?.match(/\d+/)?.[0];
   const pdf = note.source.pdf;
   const image = screenshot(item, note, "章节原文");
   const intro = `<h3>${escape(item.heading || "阅读章节")}</h3>
     ${item.background ? `<p class="reading-background"><strong>背景</strong> ${escape(item.background)}</p>` : ""}
     ${paragraph(item.why)}`;
-  if (item.originalText && item.translation) {
-    return `<section class="chapter-card chapter-bilingual">
-      <div>${intro}</div>${image}
-      <div class="chapter-bilingual-text">
-        ${bilingualPair(item.originalText, item.translation)}
-        ${item.passagePages ? `<p class="micro">双语段落 · PDF 第 ${escape(item.passagePages)} 页 ${firstSourcePage && pdf ? external(pdf.split("#")[0] + "#page=" + firstSourcePage, "打开原文 ↗") : ""}</p>` : ""}
-        ${item.details.length ? "<h4>原理与读法</h4>" + items(item.details) : ""}
-      </div>
-    </section>`;
-  }
+  const bilingual = item.originalText && item.translation ? bilingualPair(item.originalText, item.translation) : "";
+  const passage = bilingual && item.passagePages ?
+    `<p class="micro">双语段落 · PDF 第 ${escape(item.passagePages)} 页 ${firstSourcePage && pdf ? external(pdf.split("#")[0] + "#page=" + firstSourcePage, "打开原文 ↗") : ""}</p>` : "";
+  const principles = item.details.length ? "<h4>原理与读法</h4>" + items(item.details) : "";
   return `<section class="chapter-card">
-    <div>${intro}${items(item.details)}</div>${image}
+    <div>${intro}</div>${image}
+    ${bilingual || principles ? `<div class="chapter-bilingual-text">${bilingual}${passage}${principles}</div>` : ""}
+    ${related ? `<div class="chapter-related">${related}</div>` : ""}
   </section>`;
 }
 
@@ -95,26 +92,30 @@ function bilingualPair(original: string, translation: string) {
     : renderPair(original, translation);
 }
 
-function formula(item: Formula, note: Note) {
+function formula(item: Formula, note: Note, anchor = "", nested = false) {
   const symbols = item.symbols.map(([symbol, meaning]) => `<tr><th scope="row">${math(symbol)}</th><td>${escape(meaning)}</td></tr>`).join("");
-  return `<section class="formula-card close-formula">
-    <h3>${escape(item.name || "核心公式")}</h3>
+  const heading = nested ? "h4" : "h3";
+  const detailHeading = nested ? "h5" : "h4";
+  return `<section class="formula-card close-formula"${anchor ? ` id="${anchor}"` : ""}>
+    <${heading} class="formula-heading">${escape(item.name || "核心公式")}</${heading}>
     ${screenshot(item, note, item.original || "公式原文")}
-    ${item.latex ? "<h4>抽象数学写法</h4>" + mathLine(item.latex) : ""}
+    ${item.latex ? `<${detailHeading}>抽象数学写法</${detailHeading}>` + mathLine(item.latex) : ""}
     ${symbols ? `<div class="table-box"><table class="symbols">
       <thead><tr><th scope="col">符号</th><th scope="col">含义</th></tr></thead><tbody>${symbols}</tbody>
     </table></div>` : ""}
-    ${item.steps.length ? "<h4>怎么读、怎么算</h4>" + items(item.steps, "ol") : ""}
-    ${item.principle ? "<h4>数学原理</h4>" + paragraph(item.principle, "bilingual-text") : ""}
-    ${item.numericExample ? "<h4>数值算例</h4>" + paragraph(item.numericExample, "bilingual-text") : ""}
+    ${item.steps.length ? `<${detailHeading}>怎么读、怎么算</${detailHeading}>` + items(item.steps, "ol") : ""}
+    ${item.principle ? `<${detailHeading}>数学原理</${detailHeading}>` + paragraph(item.principle, "bilingual-text") : ""}
+    ${item.numericExample ? `<${detailHeading}>数值算例</${detailHeading}>` + paragraph(item.numericExample, "bilingual-text") : ""}
     ${paragraph(item.scope, "formula-scope reading-text")}
   </section>`;
 }
 
-function example(item: Example) {
-  const steps = item.steps.map((step) => `<li>${step.label ? "<h4>" + escape(step.label) + "</h4>" : ""}${paragraph(step.text)}${mathLine(step.latex)}</li>`).join("");
-  return item.title || item.setup || steps || item.takeaway ? `<div class="worked-example">
-    ${item.title ? "<h3>" + escape(item.title) + "</h3>" : ""}
+function example(item: Example, anchor = "") {
+  const heading = anchor ? "h4" : "h3";
+  const stepHeading = anchor ? "h5" : "h4";
+  const steps = item.steps.map((step) => `<li>${step.label ? `<${stepHeading}>${escape(step.label)}</${stepHeading}>` : ""}${paragraph(step.text)}${mathLine(step.latex)}</li>`).join("");
+  return item.title || item.setup || steps || item.takeaway ? `<div class="worked-example"${anchor ? ` id="${anchor}"` : ""}>
+    ${item.title ? `<${heading} class="example-heading">${escape(item.title)}</${heading}>` : ""}
     ${paragraph(item.setup)}
     ${steps ? '<ol class="calculation">' + steps + "</ol>" : ""}
     ${paragraph(item.takeaway, "example-result reading-text")}
@@ -200,13 +201,29 @@ const topicDialog = `<dialog id="topic-dialog" aria-labelledby="topic-title">
 export function readingPage(paper: Paper, categories: Category[], saved = false) {
   const { id, data: note } = paper;
   const label = categoryLabel(categories, note.category);
+  const { byChapter, unassigned, exampleChapter } = groupReadingFormulas(note.sections, note.formulas);
+  const workedExample = example(note.example, exampleChapter < 0 ? "" : "example");
+  let formulaAnchor = "formulas";
+  const chapterBody = note.sections.map((section, index) => {
+    const related = byChapter[index].map((item) => {
+      const rendered = formula(item, note, formulaAnchor, true);
+      formulaAnchor = "";
+      return rendered;
+    }).join("");
+    return chapter(section, note, related + (index === exampleChapter ? workedExample : ""));
+  }).join("");
   const sections = [
-    { id: "chapters", label: "值得读的章节", body: note.sections.map((item) => chapter(item, note)).join("") },
-    { id: "formulas", label: "核心公式", body: note.formulas.map((item) => formula(item, note)).join("") },
-    { id: "example", label: "详细数值例子", body: example(note.example) },
+    { id: "chapters", label: "值得读的章节", body: chapterBody },
+    ...(formulaAnchor || unassigned.length ? [{
+      id: formulaAnchor || "other-formulas", label: formulaAnchor ? "核心公式" : "其他公式",
+      body: unassigned.map((item) => formula(item, note)).join(""),
+    }] : []),
+    ...(exampleChapter < 0 || !workedExample ? [{ id: "example", label: "详细数值例子", body: workedExample }] : []),
     { id: "limits", label: "适用范围与证据", body: items(note.limits) },
   ];
-  const nav = sections.map(({ id, label }) => `<a href="#${id}">${label}</a>`).join("");
+  const nav = `<a href="#chapters">值得读的章节</a><a href="#formulas">核心公式</a>`
+    + (unassigned.length && !formulaAnchor ? '<a href="#other-formulas">其他公式</a>' : "")
+    + '<a href="#example">详细数值例子</a><a href="#limits">适用范围与证据</a>';
   const editLink = `<a class="mast-link" href="/manage/${id}">编辑论文</a>`;
   return layout(note.title, catalogueLink + manageLink + editLink, `
   <div class="shell notebook-layout reading-layout">

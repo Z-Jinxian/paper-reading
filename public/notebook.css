@@ -582,17 +582,19 @@ dialog::backdrop { background: #20294ce0; }
 .bilingual-pair h4 { margin: 0 0 6px; color: #4b5793; font-size: .91rem; }
 .bilingual-text { margin: 0; white-space: pre-line; overflow-wrap: anywhere; }
 .chapter-bilingual-text { grid-column: 1 / -1; }
+.chapter-related { grid-column: 1 / -1; display: grid; gap: 12px; }
+.chapter-related .formula-card { margin: 0; }
 @media (max-width: 760px) {
   .bilingual-pair { grid-template-columns: minmax(0, 1fr); gap: 8px; }
 }
-.chapter-card h3, .close-formula h3, .worked-example h3 { font-size: 1.06rem; margin: 0 0 7px; }
+.chapter-card h3, .close-formula .formula-heading, .worked-example .example-heading { font-size: 1.06rem; margin: 0 0 7px; }
 .chapter-card p, .close-formula li, .worked-example p, #limits ul { font-size: 0.93rem; }
 .chapter-card ul, .close-formula ol, #limits ul { padding-left: 1.25em; margin: 7px 0; }
 .chapter-card li + li, #limits li + li { margin-top: 5px; }
 .original-shot { width: 100%; }
 .close-formula .original-shot { width: min(100%, 40rem); }
 .close-formula .original-shot img { width: auto; margin-inline: auto; max-height: 210px; object-fit: contain; }
-.close-formula h4 { font-size: 0.91rem; color: #4b5793; }
+.close-formula h4:not(.formula-heading), .close-formula h5 { font-size: 0.91rem; color: #4b5793; }
 .close-formula .symbols th { width: 25%; }
 .close-formula .symbols td, .close-formula .symbols th { padding: 7px 11px; }
 .close-formula .table-box { margin: 10px 0 15px; }
@@ -609,7 +611,7 @@ dialog::backdrop { background: #20294ce0; }
   border-radius: 11px;
   background: #fbfcff;
 }
-.worked-example li h4 { font-size: .94rem; }
+.worked-example li h4, .worked-example li h5 { font-size: .94rem; }
 .worked-example li p { margin: 4px 0 0; }
 .math-line math { min-width: max-content; }
 .close-reading .math-line { padding: 10px 12px; overflow-x: auto; }
