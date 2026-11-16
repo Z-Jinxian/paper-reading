@@ -577,6 +577,14 @@ dialog::backdrop { background: #20294ce0; }
   border-radius: 10px;
   background: #fafbff;
 }
+.bilingual-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 0 0 14px; }
+.bilingual-pair > div { border: 1px solid var(--line); border-radius: 8px; background: #fff; padding: 12px; }
+.bilingual-pair h4 { margin: 0 0 6px; color: #4b5793; font-size: .91rem; }
+.bilingual-text { margin: 0; white-space: pre-line; overflow-wrap: anywhere; }
+.chapter-bilingual-text { grid-column: 1 / -1; }
+@media (max-width: 760px) {
+  .bilingual-pair { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+}
 .chapter-card h3, .close-formula h3, .worked-example h3 { font-size: 1.06rem; margin: 0 0 7px; }
 .chapter-card p, .close-formula li, .worked-example p, #limits ul { font-size: 0.93rem; }
 .chapter-card ul, .close-formula ol, #limits ul { padding-left: 1.25em; margin: 7px 0; }

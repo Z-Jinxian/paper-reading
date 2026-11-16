@@ -239,12 +239,14 @@ const instruction = `你是面向机器学习工程师的中文论文精读助�
 {
   "title": "原文标题", "venue": "可核验的发表信息，未知留空", "thesis": "具体问题与贡献", "reason": "推荐理由",
   "tags": ["2–4 个方法标签"],
-  "sections": [{"heading": "真实节号和中文标题", "why": "为何值得读", "details": ["值得看的具体实现或对照"], "evidence": {"page": 1, "lines": [12]}}],
-  "formulas": [{"name": "需要理解的公式", "original": "原文式号、算法或图号", "latex": "抽象数学写法，纯 LaTeX，无定界符", "symbols": [["LaTeX 符号", "中文含义"]], "steps": ["如何理解和计算"], "scope": "假设和适用范围", "evidence": {"page": 2, "lines": [18, 20]}}],
+  "sections": [{"heading": "真实节号和中文标题", "why": "为何值得读", "background": "用一两句介绍问题和读这段需要的前置概念", "passage": [{"page": 1, "from": 12, "to": 16}], "translation": ["与这段英文对应的完整中文译文"], "details": ["机制的输入、操作和输出", "为什么这样做及作者的验证"], "evidence": {"page": 1, "lines": [12]}}],
+  "formulas": [{"name": "需要理解的公式", "original": "原文式号、算法或图号", "latex": "抽象数学写法，纯 LaTeX，无定界符", "symbols": [["LaTeX 符号", "含义与张量形状或索引"]], "principle": "数学出发点、推导步骤及它在模型中的真实作用", "steps": ["怎么从输入推到结果"], "numericExample": "用同一组小数字依次给定、代入和计算结果，明确这是教学设定", "scope": "假设和适用范围", "evidence": {"page": 2, "lines": [18, 20]}}],
   "example": {"title": "详细数值例子", "setup": "教学设定和同一组数字", "steps": [{"label": "操作", "text": "逐步代入与中间结果", "latex": "可选计算式"}], "takeaway": "从数值结果得出的结论"},
   "limits": ["实验适用范围和证据限制"]
 }
-优先挑 2–3 个章节和 1–2 个核心公式。每处 evidence 只能引用输入中真实存在的页和行号，用来在 PDF 上裁图。章节优先标 1–2 行标题或关键图表标识。公式标同一小块内的式子所在行，可以选几行以包含完整等式。避开跨栏或长段文字。正文没有编号核心式时选择真实算法或图表定位，在 scope 标注公式是教学抽象。不要杜撰原文引用、章节、实验或页码。把同一算例按 3–5 步写到数值结论，检查算术。给具体数学符号和工程细节。`;
+优先挑 2–3 个章节和 1–2 个核心公式。每处 evidence 只能引用输入中真实存在的页和行号，用来在 PDF 上裁图。章节优先标 1–2 行标题或关键图表标识。公式标同一小块内的式子所在行，可以选几行以包含完整等式。避开跨栏或长段文字。正文没有编号核心式时选择真实算法或图表定位，在 scope 标注公式是教学抽象。不要杜撰原文引用、章节、实验或页码。把同一算例按 3–5 步写到数值结论，检查算术。给具体数学符号和工程细节。
+passage 是按原文顺序排列的页内连续行范围，translation 必须与 passage 的数量和顺序一致。服务端从真实 PDF 行重建英文，你只输出范围和对应的完整中文译文。每个范围覆盖同一列的一个连贯段落，遇到跨页段落可逐页填写。对选中的内容完整翻译，包括前提、因果、转折、技术术语和数值。why、background、translation 和 details 各自承担不同任务。先解释上下文，再做对应译文，最后在 details 讲信息流、训练时的梯度或消融，区分论文事实和读者推论。
+优先选两处方法核心章节，必要时加关键实验对照。若传入重点章节，尽量覆盖精确节号，缺失时在 limits 解释提取范围。公式至少写清所有关键符号，说明论文具体计算和教学化简的关系，每条公式有独立可手算的小例子。`;
 
 function suppliedPages(value: unknown): Page[] {
   if (!Array.isArray(value) || !value.length || value.length > 50) throw new PaperError(422, "论文未能提取可定位的页面文字。");
@@ -266,12 +268,59 @@ function suppliedPages(value: unknown): Page[] {
   return result;
 }
 
-function parsedDraft(content: string, pages: Page[]) {
+function attachPassage(
+  section: any,
+  pagesById: Map<number, Map<number, string>>,
+  maxWords: number,
+) {
+  const ranges: unknown = section.passage;
+  const translations: unknown = section.translation;
+  // Reconstruct English from the numbered source lines. The model only supplies
+  // locators and translations, so generated wording cannot become an original quote.
+  delete section.passage;
+  delete section.originalText;
+  delete section.passagePages;
+  delete section.translation;
+  if (!Array.isArray(ranges) || !ranges.length || ranges.length > 8
+    || !Array.isArray(translations) || translations.length !== ranges.length) return null;
+
+  const originals: string[] = [];
+  const translated: string[] = [];
+  const citedPages = new Set<number>();
+  let lastPage = 0;
+  let lastLine = 0;
+  for (const [i, range] of ranges.entries()) {
+    const { page, from, to } = range ?? {};
+    const lines = pagesById.get(page);
+    if (!lines || !Number.isInteger(from) || !Number.isInteger(to) || from < 1
+      || to < from || to - from > 100 || page < lastPage || (page === lastPage && from <= lastLine)) return null;
+    const selected: string[] = [];
+    for (let line = from; line <= to; line++) {
+      const source = lines.get(line)?.trim();
+      if (!source) return null;
+      selected.push(source);
+    }
+    const translation = typeof translations[i] === "string" ? translations[i].trim() : "";
+    if (!translation) return null;
+    originals.push(selected.join(" "));
+    translated.push(translation);
+    citedPages.add(page);
+    lastPage = page;
+    lastLine = to;
+  }
+  const originalText = originals.join("\n\n");
+  const translation = translated.join("\n\n");
+  const words = originalText.trim().split(/\s+/u).length;
+  if (originalText.length > 12000 || translation.length > 12000 || words > maxWords) return null;
+  return { originalText, translation, passagePages: [...citedPages].join("、"), words };
+}
+
+function parsedDraft(content: string, pages: Page[], suppliedPdf: boolean) {
   const start = content.indexOf("{");
   const end = content.lastIndexOf("}");
   try {
     const draft = JSON.parse(content.slice(start, end + 1));
-    const pagesById = new Map(pages.map((page) => [page.page, new Set(page.lines.map(([id]) => id))]));
+    const pagesById = new Map(pages.map((page) => [page.page, new Map(page.lines)]));
     const evidenceValid = (item: any) => {
       const evidence = item?.evidence;
       const lines = pagesById.get(evidence?.page);
@@ -285,6 +334,21 @@ function parsedDraft(content: string, pages: Page[]) {
     }
     draft.sections = draft.sections.slice(0, 3);
     draft.formulas = draft.formulas.slice(0, 2);
+    let remainingWords = suppliedPdf ? Infinity : 25;
+    let missing = 0;
+    for (const section of draft.sections) {
+      const passage = attachPassage(section, pagesById, remainingWords);
+      if (passage) {
+        const { words, ...bilingual } = passage;
+        Object.assign(section, bilingual);
+        remainingWords -= words;
+      } else {
+        missing++;
+      }
+    }
+    draft.passageWarning = missing
+      ? "有 " + missing + " 处双语段落需要补核。可在下方按 PDF 页码编辑原文与译文。"
+      : "";
     return draft;
   } catch {
     throw new PaperError(422, "模型未返回可定位的精读结果。可以重试，或选择更擅长论文和结构化输出的模型。");
@@ -295,6 +359,11 @@ export async function analyzePdf(request: Request, db: D1Database, secret: strin
   const input = await body(request, 650000);
   const row = await profile(db, String(input.modelId ?? ""));
   const pages = suppliedPages(input.pages);
+  const focus = text(input.focus, 400);
+  const suppliedPdf = input.suppliedPdf === true;
+  const extraction = suppliedPdf
+    ? "本次来自读者提供的 PDF。每处挑选 2–4 个完整核心段落，保留方法的上下文。"
+    : "本次来自论文链接，整篇草稿的英文摘录最多 25 个英文单词。若无法在该范围选取原文，passage 和 translation 都给空数组，保留原文定位并用 details 解释机制。";
   const key = await unseal(row, secret);
   const base = externalUrl(row.base_url);
   if (!base.pathname.endsWith("/chat/completions")) {
@@ -305,18 +374,21 @@ export async function analyzePdf(request: Request, db: D1Database, secret: strin
   if (key) headers.set("authorization", "Bearer " + key);
   const payload = {
     model: row.model, stream: false,
-    messages: [{ role: "system", content: instruction }, { role: "user", content: source }],
+    messages: [
+      { role: "system", content: instruction + "\n" + extraction },
+      { role: "user", content: (focus ? "读者关注：" + focus + "\n\n" : "") + source },
+    ],
   };
   try {
     let response = await fetch(base, {
-      method: "POST", headers, body: JSON.stringify({ ...payload, max_tokens: 6500 }),
+      method: "POST", headers, body: JSON.stringify({ ...payload, [base.hostname === "api.openai.com" ? "max_completion_tokens" : "max_tokens"]: suppliedPdf ? 10500 : 7500 }),
       redirect: "manual", signal: AbortSignal.timeout(145000),
     });
-    if (response.status === 400) {
+    if (response.status === 400 && base.hostname !== "api.openai.com") {
       const error = new TextDecoder().decode(await boundedBytes(response, 65536));
       if (/max_tokens.*(unsupported|not supported)|unsupported.*max_tokens/i.test(error)) {
         response = await fetch(base, {
-          method: "POST", headers, body: JSON.stringify({ ...payload, max_completion_tokens: 6500 }),
+          method: "POST", headers, body: JSON.stringify({ ...payload, max_completion_tokens: suppliedPdf ? 10500 : 7500 }),
           redirect: "manual", signal: AbortSignal.timeout(145000),
         });
       }
@@ -326,14 +398,14 @@ export async function analyzePdf(request: Request, db: D1Database, secret: strin
       throw new PaperError(422, "模型 API 返回了重定向。请填写接口的最终 Base URL。");
     }
     if (!response.ok) {
-      await response.body?.cancel();
+      if (!response.bodyUsed) await response.body?.cancel();
       throw new PaperError(422, "所选模型 API 返回 " + response.status + "。请核对 Base URL、模型名、API Key 或额度。");
     }
     const reply = JSON.parse(new TextDecoder().decode(await boundedBytes(response, 1024 * 1024)));
     const content = reply.choices?.[0]?.message?.content;
     const answer = Array.isArray(content) ? content.map((part) => part.text ?? "").join("") : content;
     if (typeof answer !== "string" || !answer.trim()) throw new PaperError(422, "所选模型没有返回精读内容。");
-    return parsedDraft(answer, pages);
+    return parsedDraft(answer, pages, suppliedPdf);
   } catch (error) {
     if (error instanceof PaperError) throw error;
     throw new PaperError(422, "连接所选模型失败或超时，请检查配置后重试。");

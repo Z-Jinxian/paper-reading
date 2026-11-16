@@ -1,8 +1,12 @@
 export type Source = { landing: string; pdf: string; version: string; note?: string };
 export type Evidence = { asset: string; alt: string; page: number | null };
-export type Section = Evidence & { heading: string; why: string; details: string[] };
+export type Section = Evidence & {
+  heading: string; why: string; details: string[];
+  background?: string; originalText?: string; translation?: string; passagePages?: string;
+};
 export type Formula = Evidence & {
   name: string; original: string; latex: string; symbols: [string, string][]; steps: string[]; scope: string;
+  principle?: string; numericExample?: string;
 };
 export type Example = { title: string; setup: string; steps: { label: string; text: string; latex?: string }[]; takeaway: string };
 export type Note = {

@@ -61,10 +61,37 @@ function screenshot(item: Evidence, note: Note, label: string) {
 }
 
 function chapter(item: Section, note: Note) {
+  const firstSourcePage = item.passagePages?.match(/\d+/)?.[0];
+  const pdf = note.source.pdf;
+  const image = screenshot(item, note, "章节原文");
+  const intro = `<h3>${escape(item.heading || "阅读章节")}</h3>
+    ${item.background ? `<p class="reading-background"><strong>背景</strong> ${escape(item.background)}</p>` : ""}
+    ${paragraph(item.why)}`;
+  if (item.originalText && item.translation) {
+    return `<section class="chapter-card chapter-bilingual">
+      <div>${intro}</div>${image}
+      <div class="chapter-bilingual-text">
+        ${bilingualPair(item.originalText, item.translation)}
+        ${item.passagePages ? `<p class="micro">双语段落 · PDF 第 ${escape(item.passagePages)} 页 ${firstSourcePage && pdf ? external(pdf.split("#")[0] + "#page=" + firstSourcePage, "打开原文 ↗") : ""}</p>` : ""}
+        ${item.details.length ? "<h4>原理与读法</h4>" + items(item.details) : ""}
+      </div>
+    </section>`;
+  }
   return `<section class="chapter-card">
-    <div><h3>${escape(item.heading || "阅读章节")}</h3>${paragraph(item.why)}${items(item.details)}</div>
-    ${screenshot(item, note, "章节原文")}
+    <div>${intro}${items(item.details)}</div>${image}
   </section>`;
+}
+
+function bilingualPair(original: string, translation: string) {
+  const split = (value: string) => value.split(/\n\s*\n/).filter((part) => part.trim());
+  const originals = split(original);
+  const translations = split(translation);
+  const renderPair = (english: string, chinese: string) =>
+    `<div class="bilingual-pair"><div lang="en"><h4 lang="zh-CN">英文原文</h4><p class="bilingual-text">${escape(english)}</p></div>
+    <div><h4>中文译文</h4><p class="bilingual-text">${escape(chinese)}</p></div></div>`;
+  return originals.length === translations.length
+    ? originals.map((english, index) => renderPair(english, translations[index])).join("")
+    : renderPair(original, translation);
 }
 
 function formula(item: Formula, note: Note) {
@@ -77,6 +104,8 @@ function formula(item: Formula, note: Note) {
       <thead><tr><th scope="col">符号</th><th scope="col">含义</th></tr></thead><tbody>${symbols}</tbody>
     </table></div>` : ""}
     ${item.steps.length ? "<h4>怎么读、怎么算</h4>" + items(item.steps, "ol") : ""}
+    ${item.principle ? "<h4>数学原理</h4>" + paragraph(item.principle, "bilingual-text") : ""}
+    ${item.numericExample ? "<h4>数值算例</h4>" + paragraph(item.numericExample, "bilingual-text") : ""}
     ${paragraph(item.scope, "formula-scope reading-text")}
   </section>`;
 }
@@ -315,12 +344,15 @@ export function editorPage(paper: Paper, profiles: ModelProfile[], categories: C
         <div class="auto-heading"><h2 id="auto-title">从论文生成精读</h2><a href="/models">配置模型 API ↗</a></div>
         ${profiles.length ? `<form id="generate-paper">
           <div class="editor-grid">
-            <label class="editor-field"><span>论文或 PDF 链接</span><input id="research-url" type="url" placeholder="https://arxiv.org/abs/…" value="${escape(paper.data.source.pdf || paper.data.source.landing)}" required></label>
+            <label class="editor-field"><span>本地 PDF（选填）</span><input id="research-file" type="file" accept="application/pdf,.pdf"></label>
+            <label class="editor-field"><span>论文或 PDF 链接</span><input id="research-url" type="url" placeholder="https://arxiv.org/abs/…" value="${escape(paper.data.source.pdf || paper.data.source.landing)}"></label>
             <label class="editor-field"><span>使用模型 API</span><select id="research-model" required>${profiles.map((profile) =>
               `<option value="${escape(profile.id)}">${escape(profile.name)} · ${escape(profile.model)}</option>`).join("")}</select></label>
+            <label class="editor-field"><span>重点章节（选填）</span><input id="research-focus" maxlength="400" placeholder="例如 §3.2、§3.3"></label>
+            <label class="editor-field"><span>PDF 页码范围（选填）</span><input id="research-pages" maxlength="100" placeholder="例如 3-5,8，按 PDF 阅读器页码"></label>
           </div>
           <div class="auto-actions"><button class="hero-cta" id="generate-button" type="submit">生成精读草稿</button>
-            <p>生成时将 PDF 的页面文字发送给所选模型。结果会填入下方表单，检查后再保存。</p>
+            <p>生成时将 PDF 页面的文字发送给所选模型。草稿含背景、对照译文、公式原理和算例。选取本地 PDF 可生成完整段落对照，保存时保留笔记和截图。</p>
           </div>
           <p id="generate-status" class="action-feedback" role="status" hidden></p>
         </form>` : '<p>配置一个模型 API 后，可以从论文链接自动生成章节、公式截图和详细算例。</p>'}

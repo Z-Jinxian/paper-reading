@@ -230,6 +230,10 @@
     let fields;
     if (kind === "section") {
       fields = heading + pages + textarea("为什么值得读", "why", item.why)
+        + textarea("段落背景（1–2 句话）", "background", item.background, "", 2)
+        + textarea("选定英文原文", "originalText", item.originalText, "各段之间留一空行", 5)
+        + textarea("对应的中文译文", "translation", item.translation, "按原文顺序逐段翻译，各段之间留一空行", 5)
+        + input("双语段落的 PDF 页码", "passagePages", item.passagePages)
         + textarea("要看哪些细节", "details", joined(item.details), "每行写一条关键细节");
     } else if (kind === "formula") {
       const symbols = Array.isArray(item.symbols) ? item.symbols.map((pair) => pair.join("｜")).join("\n") : "";
@@ -238,6 +242,8 @@
         + textarea("抽象数学公式（LaTeX）", "latex", item.latex, "例如 w_i = \\exp(-\\ell_i/\\tau)", 2)
         + textarea("符号与含义", "symbols", symbols, "每行一条，格式：LaTeX 符号｜中文含义")
         + textarea("原文公式怎么理解", "steps", joined(item.steps), "每行写一步，说明输入、作用和计算过程")
+        + textarea("数学原理", "principle", item.principle)
+        + textarea("公式数值算例", "numericExample", item.numericExample)
         + textarea("使用条件", "scope", item.scope, "", 2);
     } else {
       fields = input("这一步做什么", "label", item.label, { wide: true })
@@ -301,6 +307,8 @@
     const readBlocks = (kind, read) => Array.from(form.querySelectorAll('[data-kind="' + kind + '"]'), read);
     const chapters = readBlocks("section", (block, index) => ({
       heading: value(block, "heading"), why: value(block, "why"), details: splitLines(value(block, "details")),
+      background: value(block, "background"), originalText: value(block, "originalText"),
+      translation: value(block, "translation"), passagePages: value(block, "passagePages"),
       ...evidence(block, "section", index),
     }));
     const formulas = readBlocks("formula", (block, index) => ({
@@ -310,6 +318,7 @@
         return separator < 0 ? [row, ""] : [row.slice(0, separator), row.slice(separator + 1)];
       }),
       steps: splitLines(value(block, "steps")), scope: value(block, "scope"),
+      principle: value(block, "principle"), numericExample: value(block, "numericExample"),
       ...evidence(block, "formula", index),
     }));
     const steps = readBlocks("step", (block) => ({
@@ -394,20 +403,35 @@
     const url = get("research-url").value.trim();
     const modelId = get("research-model").value;
     const status = get("generate-status");
+    const fileInput = get("research-file");
+    const file = fileInput.files[0];
     let opened;
+    fileInput.disabled = true;
     generateButton.disabled = true;
     saved.disabled = true;
     display(status, "正在读取论文 PDF…");
     try {
-      const response = await api("/api/research/pdf", "POST", { url });
-      const pdf = response.headers.get("x-source-pdf");
-      if (!pdf) throw new Error("论文来源信息缺失，请重试。");
+      let pdf = "";
+      let bytes;
+      if (file) {
+        if (file.size > 32 * 1024 * 1024) throw new Error("请选择 32 MB 以内的本地 PDF。");
+        bytes = await file.arrayBuffer();
+      } else if (url) {
+        const response = await api("/api/research/pdf", "POST", { url });
+        pdf = response.headers.get("x-source-pdf");
+        if (!pdf) throw new Error("论文来源信息缺失，请重试。");
+        bytes = await response.arrayBuffer();
+      } else {
+        throw new Error("请选择本地 PDF，或填写论文链接。");
+      }
       const { openPaper, originalClip } = await import("/paper-pdf.js");
-      opened = await openPaper(new Uint8Array(await response.arrayBuffer()), (number, total) => {
+      opened = await openPaper(new Uint8Array(bytes), (number, total) => {
         display(status, "正在定位原文，第 " + number + " / " + total + " 页…");
-      });
+      }, get("research-pages").value.trim());
       display(status, "模型正在整理章节、公式和数值例子…");
-      const analysis = await api("/api/research/analyze", "POST", { modelId, pages: opened.pages });
+      const analysis = await api("/api/research/analyze", "POST", {
+        modelId, pages: opened.pages, focus: get("research-focus").value.trim(), suppliedPdf: Boolean(file),
+      });
       const draft = await analysis.json();
       const images = { section: [], formula: [] };
       let missed = 0;
@@ -425,21 +449,24 @@
           }
         }
       }
-      const scope = opened.pages.length === opened.pageCount ? "" :
-        "本次模型阅读了 " + opened.pages.length + " / " + opened.pageCount + " 页。截图页码按 PDF 从 1 开始。";
+      const scope = [
+        opened.pages.length === opened.pageCount ? "" : "本次模型读取了 " + opened.pages.length + " / " + opened.pageCount + " 页。",
+        opened.truncated ? "部分页面文字达到提取上限。可选更小的 PDF 页码范围后重新生成。" : "",
+      ].filter(Boolean).join("");
       paint({
         ...draft, category: value(blocks.basics, "category"),
-        source: { landing: url, pdf, version: "原文 PDF · " + opened.pageCount + " 页", note: scope },
+        source: { landing: pdf ? url : value(blocks.basics, "landing"), pdf, version: "原文 PDF · " + opened.pageCount + " 页", note: scope },
       }, images);
       dirty = true;
-      display(status, missed ? "精读草稿已填入。有 " + missed + " 处裁图无法可靠定位，页码已保留。可以换一个模型重试。" :
-        "精读草稿和原文截图已填入下方。核对后点击保存论文。", Boolean(missed));
+      const warnings = [draft.passageWarning, missed ? "有 " + missed + " 处裁图无法可靠定位，页码已保留。" : ""].filter(Boolean);
+      display(status, ["精读草稿已填入下方。", ...warnings, "核对后点击保存论文。"].join(""), Boolean(warnings.length));
     } catch (error) {
       display(status, error.message || "生成精读失败，请稍后重试。", true);
     } finally {
       if (opened) await opened.job.destroy().catch(() => {});
       generateButton.disabled = false;
       saved.disabled = false;
+      fileInput.disabled = false;
     }
   });
 })();

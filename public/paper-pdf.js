@@ -41,17 +41,57 @@ function collectLines(items, viewport, transform) {
       }
     }
   }
-  return lines.map((line, index) => ({ ...line, id: index + 1 }));
+  return readingOrder(lines, viewport.width).map((line, index) => ({ ...line, id: index + 1 }));
 }
 
-function pageIndices(length) {
+function readingOrder(lines, width) {
+  const middle = width / 2;
+  const gap = width * .012;
+  const leftOf = (line) => line.right <= middle - gap;
+  const rightOf = (line) => line.x >= middle + gap;
+  const spans = (line) => line.x < middle - gap && line.right > middle + gap;
+  const fullLines = lines.filter((line) => line.right - line.x > width * .23);
+  const left = fullLines.filter(leftOf);
+  const right = fullLines.filter(rightOf);
+  if (left.length < 6 || right.length < 6) return lines;
+  const overlap = Math.min(left.at(-1).y, right.at(-1).y) - Math.max(left[0].y, right[0].y);
+  if (overlap < 60) return lines;
+
+  const ordered = [];
+  let columns = [[], []];
+  for (const line of lines) {
+    if (spans(line)) {
+      ordered.push(...columns[0], ...columns[1], line);
+      columns = [[], []];
+    } else {
+      columns[Number(line.x >= middle)].push(line);
+    }
+  }
+  return ordered.concat(...columns);
+}
+
+function pageIndices(length, selection) {
+  if (selection) {
+    const pages = new Set();
+    for (const part of selection.split(/[,，、]/u)) {
+      const match = /^\s*(\d+)(?:\s*[-–—]\s*(\d+))?\s*$/u.exec(part);
+      const from = Number(match?.[1]);
+      const to = Number(match?.[2] ?? from);
+      if (!match || from < 1 || to < from || to > length || to - from >= 38) {
+        throw new Error("请填写有效的 PDF 页码，例如 3-5,8，最多选 38 页。");
+      }
+      for (let page = from; page <= to; page++) pages.add(page);
+    }
+    if (pages.size > 38) throw new Error("每次最多选择 38 页，请缩小精读范围。");
+    return [...pages].sort((a, b) => a - b);
+  }
   if (length <= 38) return Array.from({ length }, (_, i) => i + 1);
   const first = Array.from({ length: 30 }, (_, i) => i + 1);
   const appendix = Array.from({ length: 8 }, (_, i) => length - 7 + i);
   return [...first, ...appendix];
 }
 
-export async function openPaper(data, onPage = () => {}) {
+export async function openPaper(data, onPage = () => {}, selection = "") {
   const library = await import(assetBase + "pdf.mjs");
   library.GlobalWorkerOptions.workerSrc = assetBase + "pdf.worker.mjs";
   const job = library.getDocument({
@@ -63,8 +103,9 @@ export async function openPaper(data, onPage = () => {}) {
     const document = await job.promise;
     const pages = [];
     const geometry = new Map();
-    const indices = pageIndices(document.numPages);
+    const indices = pageIndices(document.numPages, selection);
     const limit = Math.floor(105000 / indices.length);
+    let truncated = false;
     for (const number of indices) {
       onPage(number, document.numPages);
       const page = await document.getPage(number);
@@ -72,10 +113,14 @@ export async function openPaper(data, onPage = () => {}) {
       const content = await page.getTextContent();
       const lines = collectLines(content.items, viewport, library.Util.transform);
       const filtered = lines.filter((line) => line.text).slice(0, 360);
+      truncated ||= filtered.length < lines.length;
       const used = [];
       let characters = 0;
       for (const line of filtered) {
-        if (characters + line.text.length > limit) break;
+        if (characters + line.text.length > limit) {
+          truncated = true;
+          break;
+        }
         used.push([line.id, line.text]);
         characters += line.text.length;
       }
@@ -85,7 +130,7 @@ export async function openPaper(data, onPage = () => {}) {
       }
     }
     if (!pages.length) throw new Error("这个 PDF 没有可定位的文字。请换成文字可选择的原文版本。");
-    return { job, document, pages, geometry, pageCount: document.numPages };
+    return { job, document, pages, geometry, pageCount: document.numPages, truncated };
   } catch (error) {
     await job.destroy();
     throw error;

@@ -159,6 +159,10 @@ function normalizeNote(raw: any, topics: Category[], previous?: Note): Note {
       heading: clean(item?.heading, 350),
       why: clean(item?.why),
       details: lines(item?.details),
+      background: clean(item?.background, 1000),
+      originalText: clean(item?.originalText),
+      translation: clean(item?.translation),
+      passagePages: clean(item?.passagePages, 200),
       ...evidence(item, knownAssets),
     }), 12),
     formulas: list(raw.formulas, (item): Formula => ({
@@ -168,6 +172,8 @@ function normalizeNote(raw: any, topics: Category[], previous?: Note): Note {
       symbols: list(item?.symbols, (pair): [string, string] => [clean(pair?.[0], 240), clean(pair?.[1], 2000)]).filter(([symbol, meaning]) => symbol || meaning),
       steps: lines(item?.steps),
       scope: clean(item?.scope),
+      principle: clean(item?.principle),
+      numericExample: clean(item?.numericExample),
       ...evidence(item, knownAssets),
     }), 12),
     example: {
@@ -225,8 +231,8 @@ async function uploadImages(form: FormData, note: Note, id: string, bucket?: R2B
 }
 
 function removeEmptyBlocks(note: Note) {
-  note.sections = note.sections.filter((item) => item.heading || item.why || item.details.length || item.asset || item.page);
-  note.formulas = note.formulas.filter((item) => item.name || item.original || item.latex || item.symbols.length || item.steps.length || item.asset || item.page || item.scope);
+  note.sections = note.sections.filter((item) => item.heading || item.why || item.details.length || item.asset || item.page || item.background || item.originalText || item.translation);
+  note.formulas = note.formulas.filter((item) => item.name || item.original || item.latex || item.symbols.length || item.steps.length || item.asset || item.page || item.scope || item.principle || item.numericExample);
 }
 
 const conflict = () => new PaperError(409, "这篇论文已在另一页面更新。请保留当前输入，再重新打开最新版本。");
