@@ -2,6 +2,7 @@ import type { ModelProfile } from "./research";
 import katex from "katex";
 import home from "../content/index-template.html?raw";
 import { isComplete } from "./papers";
+import { readingSkillBody, readingSkillFilePath, readingSkillPath } from "./reading-skill";
 import type { Category, Evidence, Example, Formula, Note, Paper, Section } from "./types";
 
 const escape = (value: unknown) => String(value ?? "").replace(/[&<>"']/g, (c) => ({
@@ -130,6 +131,7 @@ function masthead(actions: string) {
 const modelsLink = '<a class="mast-link" href="/models">模型 API</a>';
 const manageLink = '<a class="mast-link" href="/manage">管理论文</a>';
 const catalogueLink = '<a class="mast-link" href="/#recommendations">论文库</a>';
+const skillLink = `<a class="mast-link" href="${readingSkillPath}">精读 Skill</a>`;
 
 function layout(title: string, header: string, body: string, script?: string, editor = false) {
   return `<!doctype html>
@@ -146,6 +148,27 @@ function layout(title: string, header: string, body: string, script?: string, ed
   ${masthead(header)}
   ${body}
 </body></html>`;
+}
+
+export function readingSkillPage() {
+  const sections = readingSkillBody.split(/\n(?=## )/u).slice(1).map((section) => {
+    const [heading, ...lines] = section.trim().split(/\r?\n/u);
+    return `<section><h2>${escape(heading.slice(3))}</h2>
+      ${items(lines.filter((line) => line.startsWith("- ")).map((line) => line.slice(2)))}</section>`;
+  }).join("");
+  return layout("精读 Skill", catalogueLink + manageLink, `<main class="shell skill-page" id="paper-content">
+    <article class="paper close-reading">
+      <header class="paper-header">
+        <h1>精读 Skill</h1>
+        <p class="reading-text">每次生成草稿都会使用这套精读标准。英文从已定位的 PDF 行提取，生成后会标出需要复核的内容。</p>
+        <div class="paper-actions">
+          <a class="secondary-action" href="${readingSkillFilePath}" download="SKILL.md">下载 SKILL.md</a>
+          <a class="hero-cta" href="/manage/new">生成论文精读</a>
+        </div>
+      </header>
+      <div class="paper-content">${sections}</div>
+    </article>
+  </main>`);
 }
 
 const dialog = `<dialog id="source-dialog" aria-labelledby="source-dialog-title">
@@ -332,7 +355,7 @@ export function editorPage(paper: Paper, profiles: ModelProfile[], categories: C
     ["example", "详细算例"], ["limits", "适用范围"],
   ];
   const currentLink = paper.data.title ? `<a class="mast-link" href="${paperUrl(paper.id)}">查看精读</a>` : "";
-  return layout(title, manageLink + modelsLink + currentLink, `<div class="shell editor-layout">
+  return layout(title, manageLink + modelsLink + skillLink + currentLink, `<div class="shell editor-layout">
     <aside class="rail"><nav aria-label="编辑目录"><p class="rail-title">精读内容</p>${sections.map(([id, name]) =>
       `<a href="#edit-${id}">${name}</a>`).join("")}</nav></aside>
     <main class="editor" id="paper-content">
@@ -355,6 +378,10 @@ export function editorPage(paper: Paper, profiles: ModelProfile[], categories: C
             <p>生成时将 PDF 页面的文字发送给所选模型。草稿含背景、对照译文、公式原理和算例。选取本地 PDF 可生成完整段落对照，保存时保留笔记和截图。</p>
           </div>
           <p id="generate-status" class="action-feedback" role="status" hidden></p>
+          <details id="generate-quality" class="action-feedback has-error" hidden>
+            <summary>草稿待复核项</summary>
+            <ul></ul>
+          </details>
         </form>` : '<p>配置一个模型 API 后，可以从论文链接自动生成章节、公式截图和详细算例。</p>'}
       </section>
       <form id="paper-editor">

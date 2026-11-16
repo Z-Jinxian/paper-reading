@@ -9,6 +9,7 @@
 - 配置多个 OpenAI 兼容模型。在生成草稿时选择本次使用的模型。
 - 可从论文链接或本地 PDF 生成精读，按需填写重点章节与 PDF 页码范围。模型提供段落和公式的位置，服务端从编号行重组英文原文，浏览器从 PDF 裁出截图。
 - 阅读页逐段显示英文和对应中文译文。每个核心公式可以独立编辑符号、数学原理和数值算例。
+- 「精读 Skill」展示并提供下载当前生成标准。草稿生成器直接使用同一份 [SKILL.md](skills/paper-reading/SKILL.md)，生成后列出缺失的结构和证据位置，便于复核。
 - 保存前核对草稿、截图、页码和算例。阅读页支持放大原图和跳到 PDF 对应页。
 
 ## 本地运行
@@ -60,6 +61,7 @@ NOTEBOOK_CREDENTIAL_KEY=填入刚生成的64位十六进制字符
 | `worker/` | Worker 入口、页面渲染、论文与专题接口、模型配置、PDF 获取和精读草稿 |
 | `public/` | 页面样式、交互、PDF.js 文本抽取和截图裁切 |
 | `content/` | 首页模板和自编演示笔记 |
+| `skills/paper-reading/SKILL.md` | 网站显示与生成器共用的论文精读标准 |
 | `drizzle/` | D1 数据库迁移 |
 
 运行 `npm run check` 检查类型，`npm run build` 验证生产构建。更新数据库结构时编辑 `db/schema.ts`，运行 `npm run db:generate` 生成迁移。

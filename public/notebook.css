@@ -652,6 +652,11 @@ dialog::backdrop { background: #20294ce0; }
 .confirm-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 9px; margin-top: 15px; }
 .action-feedback { margin: 8px 0; padding: 7px 10px; background: #ebf1ff; color: #3e518f; border-radius: 7px; font-size: .86rem; }
 .action-feedback.has-error { color: #803568; background: #f7ecf5; }
+.skill-page { max-width: 60rem; padding-block: clamp(20px, 4vw, 44px); }
+.skill-page section ul { padding-inline-start: 1.4rem; }
+.skill-page section li + li { margin-top: .6rem; }
+#generate-quality summary { cursor: pointer; font-weight: 650; }
+#generate-quality ul { margin-block: .45rem; padding-inline-start: 1.25rem; }
 :is(#remove-dialog, #topic-dialog) { width: min(30rem, calc(100% - 25px)); }
 :is(#remove-dialog, #topic-dialog) h2 { font-size: 1.36rem; margin: 0 0 8px; }
 :is(#remove-dialog, #topic-dialog) .hero-cta { border: 0; cursor: pointer; }

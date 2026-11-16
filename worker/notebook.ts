@@ -1,6 +1,7 @@
 import { analyzePdf, deleteModel, models, researchPdf, saveModel } from "./research";
 import { allPapers, allTopics, blankNote, changePaperStatus, createTopic, idPattern, imageNamePattern, PaperError, paperById, savePaper } from "./papers";
-import { editorPage, homepage, managementPage, messagePage, modelsPage, readingPage } from "./render";
+import { editorPage, homepage, managementPage, messagePage, modelsPage, readingPage, readingSkillPage } from "./render";
+import { readingSkill, readingSkillFilePath, readingSkillPath } from "./reading-skill";
 
 const headers = { "cache-control": "no-store", "x-content-type-options": "nosniff" };
 const html = (page: string, status = 200) => new Response(page, {
@@ -25,10 +26,27 @@ export async function serveNotebook(request: Request, env: Cloudflare.Env): Prom
   const topicsRoute = path === "/api/topics";
   const api = research || modelRoute || topicsRoute || path.startsWith("/api/papers/");
   const media = path.startsWith("/paper-media/");
-  const sitePage = path === "/" || path === "/index.html" || path === "/models" || path === "/manage" || path.startsWith("/manage/") || path.startsWith("/papers/");
+  const skillPage = path === readingSkillPath || path === readingSkillPath + "/";
+  const skillDownload = path === readingSkillFilePath;
+  const sitePage = path === "/" || path === "/index.html" || path === "/models" || path === "/manage" || path.startsWith("/manage/") || path.startsWith("/papers/") || skillPage || skillDownload;
   if (!api && !media && !sitePage) return;
 
   try {
+    if (skillPage || skillDownload) {
+      const { method } = request;
+      if (method !== "GET" && method !== "HEAD") {
+        return new Response(null, { status: 405, headers: { ...headers, allow: "GET, HEAD" } });
+      }
+      if (skillDownload) {
+        return new Response(method === "HEAD" ? null : readingSkill, {
+          headers: { ...headers, "content-type": "text/markdown; charset=utf-8", "content-disposition": 'attachment; filename="SKILL.md"' },
+        });
+      }
+      return new Response(method === "HEAD" ? null : readingSkillPage(), {
+        headers: { ...headers, "content-type": "text/html; charset=utf-8" },
+      });
+    }
+
     if (media) {
       if (request.method !== "GET" && request.method !== "HEAD") return new Response(null, { status: 405, headers });
       const [, , id, name, ...rest] = path.split("/");

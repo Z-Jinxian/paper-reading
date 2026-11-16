@@ -403,12 +403,14 @@
     const url = get("research-url").value.trim();
     const modelId = get("research-model").value;
     const status = get("generate-status");
+    const quality = get("generate-quality");
     const fileInput = get("research-file");
     const file = fileInput.files[0];
     let opened;
     fileInput.disabled = true;
     generateButton.disabled = true;
     saved.disabled = true;
+    quality.hidden = true;
     display(status, "正在读取论文 PDF…");
     try {
       let pdf = "";
@@ -459,7 +461,16 @@
       }, images);
       dirty = true;
       const warnings = [draft.passageWarning, missed ? "有 " + missed + " 处裁图无法可靠定位，页码已保留。" : ""].filter(Boolean);
-      display(status, ["精读草稿已填入下方。", ...warnings, "核对后点击保存论文。"].join(""), Boolean(warnings.length));
+      if (Array.isArray(draft.qualityIssues)) warnings.push(...draft.qualityIssues);
+      const warningList = quality.querySelector("ul");
+      warningList.replaceChildren(...warnings.map((warning) => {
+        const item = document.createElement("li");
+        item.textContent = warning;
+        return item;
+      }));
+      quality.hidden = warnings.length === 0;
+      quality.open = warnings.length > 0;
+      display(status, warnings.length ? "精读草稿已填入下方，请查看待复核项。" : "精读草稿已填入下方。已检查内容结构，保存前请核对原文、译文和计算。");
     } catch (error) {
       display(status, error.message || "生成精读失败，请稍后重试。", true);
     } finally {
