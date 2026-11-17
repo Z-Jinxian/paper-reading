@@ -1,5 +1,6 @@
 import { PaperError } from "./papers";
 import { checkReadingDraft, readingSkillBody } from "./reading-skill";
+import type { PassageNote } from "./types";
 
 type ProfileRow = { id: string; name: string; base_url: string; model: string; sealed_key: string | null };
 export type ModelProfile = { id: string; name: string; baseUrl: string; model: string; hasKey: boolean };
@@ -240,12 +241,12 @@ const outputContract = `输入是带物理页码和行号的真实 PDF 文本。
 {
   "title": "原文标题", "venue": "可核验的发表信息，未知留空", "thesis": "具体问题与贡献", "reason": "推荐理由",
   "tags": ["2–4 个方法标签"],
-  "sections": [{"heading": "真实节号和中文标题", "why": "为何值得读", "background": "用一两句介绍问题和读这段需要的前置概念", "passage": [{"page": 1, "from": 12, "to": 16}], "translation": ["与这段英文对应的完整中文译文"], "details": ["机制的输入、操作和输出", "为什么这样做及作者的验证"], "evidence": {"page": 1, "lines": [12]}}],
+  "sections": [{"heading": "真实节号和中文标题", "why": "为何值得读", "background": "用一两句介绍问题和读这段需要的前置概念", "passageNotes": [{"page": 1, "from": 12, "to": 16, "summary": "用自己的中文重述这一段的推理、条件和作用"}], "passage": [{"page": 1, "from": 12, "to": 16}], "translation": ["与所选英文一一对应的中文译文"], "details": ["机制的输入、操作和输出", "为什么这样做及作者的验证"], "evidence": {"page": 1, "lines": [12]}}],
   "formulas": [{"name": "需要理解的公式", "original": "原文式号、算法或图号", "latex": "抽象数学写法，纯 LaTeX，无定界符", "symbols": [["LaTeX 符号", "含义与张量形状或索引"]], "principle": "数学出发点、推导步骤及它在模型中的真实作用", "steps": ["怎么从输入推到结果"], "numericExample": "用同一组小数字依次给定、代入和计算结果，明确这是教学设定", "scope": "假设和适用范围", "evidence": {"page": 2, "lines": [18, 20]}}],
   "example": {"title": "详细数值例子", "setup": "教学设定和同一组数字", "steps": [{"label": "操作", "text": "逐步代入与中间结果", "latex": "可选计算式"}], "takeaway": "从数值结果得出的结论"},
   "limits": ["实验适用范围和证据限制"]
 }
-evidence.lines 填实际存在的 1–8 个行号，优先取同一小块内可截取的节标题、公式或图表证据。passage 填按原文顺序排列的页内连续行范围，translation 与 passage 的数量、顺序一一对应。英文原文由服务端取回，填范围与译文即可。
+evidence.lines 填实际存在的 1–8 个行号，优先取同一小块内可截取的节标题、公式或图表证据。每个重点章节在 passageNotes 中按原文顺序选 2–4 个核心段落。每项填写同页同栏的连续行范围和一段具体中文导读，保留原文的推理、条件、变量与例外。passage 是需要展示英文的范围，translation 与 passage 数量、顺序一一对应。英文由服务端取回。
 章节 details 至少写两条具体原理解读。公式逐项填写名称、出处、符号、数学原理、使用条件和包含实际数字的算例。example 至少包含三步有内容的计算。limits 写出实验条件和仍需核验的问题。返回前检查这些字段和算术。`;
 
 function suppliedPages(value: unknown): Page[] {
@@ -266,6 +267,40 @@ function suppliedPages(value: unknown): Page[] {
   });
   if (length > 110000) throw new PaperError(413, "论文文字超过本次精读的范围，请选择较短的版本。");
   return result;
+}
+
+function sourceLines(range: any, pagesById: Map<number, Map<number, string>>) {
+  const { page, from, to } = range ?? {};
+  const lines = pagesById.get(page);
+  if (!lines || !Number.isInteger(from) || !Number.isInteger(to) || from < 1
+    || to < from || to - from > 100) return null;
+  const selected: string[] = [];
+  for (let line = from; line <= to; line++) {
+    const source = lines.get(line)?.trim();
+    if (!source) return null;
+    selected.push(source);
+  }
+  return { page, from, to, selected };
+}
+
+function readingPassageNotes(value: unknown, pagesById: Map<number, Map<number, string>>): PassageNote[] {
+  if (!Array.isArray(value)) return [];
+  const notes: (PassageNote & { from: number; to: number })[] = [];
+  for (const entry of value.slice(0, 8)) {
+    const range = sourceLines(entry, pagesById);
+    const summary = typeof entry?.summary === "string" ? entry.summary.trim() : "";
+    if (range && summary && summary.length <= 1400) {
+      const { page, from, to } = range;
+      notes.push({ page, from, to, summary });
+    }
+  }
+  notes.sort((a, b) => a.page - b.page || a.from - b.from);
+  const ordered: typeof notes = [];
+  for (const note of notes) {
+    const previous = ordered.at(-1);
+    if (!previous || note.page !== previous.page || note.from > previous.to) ordered.push(note);
+  }
+  return ordered;
 }
 
 function attachPassage(
@@ -290,17 +325,11 @@ function attachPassage(
   let lastPage = 0;
   let lastLine = 0;
   for (const [i, range] of ranges.entries()) {
-    const { page, from, to } = range ?? {};
-    const lines = pagesById.get(page);
-    if (!lines || !Number.isInteger(from) || !Number.isInteger(to) || from < 1
-      || to < from || to - from > 100 || page < lastPage || (page === lastPage && from <= lastLine)) return null;
-    const selected: string[] = [];
-    for (let line = from; line <= to; line++) {
-      const source = lines.get(line)?.trim();
-      if (!source) return null;
-      selected.push(source);
-    }
-    const translation = typeof translations[i] === "string" ? translations[i].trim() : "";
+    const source = sourceLines(range, pagesById);
+    if (!source) return null;
+    const { page, from, to, selected } = source;
+    if (page < lastPage || (page === lastPage && from <= lastLine)) return null;
+    const translation = typeof translations[i] === "string" ? translations[i].trim().replace(/\s*\n\s*/gu, " ") : "";
     if (!translation) return null;
     originals.push(selected.join(" "));
     translated.push(translation);
@@ -335,20 +364,16 @@ function parsedDraft(content: string, pages: Page[], suppliedPdf: boolean) {
     draft.sections = draft.sections.slice(0, 3);
     draft.formulas = draft.formulas.slice(0, 2);
     let remainingWords = suppliedPdf ? Infinity : 25;
-    let missing = 0;
     for (const section of draft.sections) {
+      section.passageNotes = readingPassageNotes(section.passageNotes, pagesById);
       const passage = attachPassage(section, pagesById, remainingWords);
       if (passage) {
         const { words, ...bilingual } = passage;
         Object.assign(section, bilingual);
         remainingWords -= words;
-      } else {
-        missing++;
       }
     }
-    draft.passageWarning = missing
-      ? "有 " + missing + " 处双语段落需要补核。可在下方按 PDF 页码编辑原文与译文。"
-      : "";
+    draft.generatedFrom = suppliedPdf ? "upload" : "link";
     draft.qualityIssues = checkReadingDraft(draft, suppliedPdf);
     return draft;
   } catch {
@@ -363,8 +388,8 @@ export async function analyzePdf(request: Request, db: D1Database, secret: strin
   const focus = text(input.focus, 400);
   const suppliedPdf = input.suppliedPdf === true;
   const extraction = suppliedPdf
-    ? "本次来自读者提供的 PDF。每处挑选 2–4 个完整核心段落，保留方法的上下文。"
-    : "本次来自论文链接，整篇草稿的英文摘录最多 25 个英文单词。若无法在该范围选取原文，passage 和 translation 都给空数组，保留原文定位并用 details 解释机制。";
+    ? "本次输入来自用户选择的本地文件。每个重点章节选择完整的核心段落，通常 2–4 段，保留方法上下文。"
+    : "本次输入来自在线链接。每个章节都填写完整的 passageNotes。整篇草稿的英文摘录合计最多 25 个英文单词，只选核心句所在的短行并给对应译文。其余段落通过 passageNotes 提供原文位置和逐段中文导读。";
   const key = await unseal(row, secret);
   const base = externalUrl(row.base_url);
   if (!base.pathname.endsWith("/chat/completions")) {

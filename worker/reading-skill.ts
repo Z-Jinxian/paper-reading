@@ -10,6 +10,7 @@ type DraftSection = {
   background?: unknown;
   originalText?: unknown;
   translation?: unknown;
+  passageNotes?: unknown;
   details?: unknown;
 };
 
@@ -31,22 +32,31 @@ type ReviewDraft = {
 };
 
 const hasText = (value: unknown): value is string => typeof value === "string" && Boolean(value.trim());
+const paragraphCount = (value: unknown) => hasText(value) ? value.trim().split(/\n\s*\n/u).length : 0;
 const countText = (value: unknown) => Array.isArray(value) ? value.filter(hasText).length : 0;
 const title = (value: unknown, fallback: string) => hasText(value) ? value.trim().slice(0, 80) : fallback;
 
 export function checkReadingDraft(draft: ReviewDraft, suppliedPdf: boolean): string[] {
   const issues: string[] = [];
 
+  let hasBilingualExcerpt = false;
   draft.sections.forEach((section, index) => {
     const missing: string[] = [];
     if (!hasText(section.heading)) missing.push("节号与标题");
     if (!hasText(section.background)) missing.push("段落背景");
+    if (!Array.isArray(section.passageNotes) || section.passageNotes.length < 2) {
+      missing.push("至少两处有原文定位的逐段中文导读");
+    }
     if (countText(section.details) < 2) missing.push("具体原理解读");
-    if (suppliedPdf && (!hasText(section.originalText) || !hasText(section.translation))) {
+    const originals = paragraphCount(section.originalText);
+    const translations = paragraphCount(section.translation);
+    if (originals > 0 && originals === translations) hasBilingualExcerpt = true;
+    if (originals !== translations || (suppliedPdf && originals === 0)) {
       missing.push("可定位的英中段落");
     }
     if (missing.length) issues.push(title(section.heading, "重点章节 " + (index + 1)) + "待补 " + missing.join("、"));
   });
+  if (!suppliedPdf && !hasBilingualExcerpt) issues.push("待补一条可定位的英文短摘录及对应译文");
 
   draft.formulas.forEach((formula, index) => {
     const missing: string[] = [];

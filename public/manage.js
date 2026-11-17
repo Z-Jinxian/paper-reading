@@ -210,6 +210,23 @@
   const joined = (value) => Array.isArray(value) ? value.join("\n") : "";
   const splitLines = (value) => value.split("\n").map((line) => line.trim()).filter(Boolean);
   const value = (node, name) => node.querySelector('[name="' + name + '"]')?.value.trim() || "";
+  let generatedFrom;
+
+  function passageLines(notes) {
+    return (notes || []).map(({ page, from, to, summary }) => {
+      const location = from == null ? page : page + "/" + from + "-" + to;
+      return location + "｜" + summary.replace(/\s*\n\s*/gu, " ");
+    }).join("\n");
+  }
+
+  function readPassageLines(value) {
+    return splitLines(value).map((line) => {
+      const entry = /^(\d+)(?:\/(\d+)-(\d+))?\s*｜\s*(.+)$/u.exec(line);
+      if (!entry) throw new Error("逐段中文导读请按每行「页码/起始行-结束行｜中文导读」填写。");
+      const [, page, from, to, summary] = entry;
+      return { page: Number(page), ...(from === undefined ? {} : { from: Number(from), to: Number(to) }), summary };
+    });
+  }
 
   function imageMarkup(item, temporary) {
     const preview = temporary || item.asset;
@@ -234,6 +251,7 @@
         + textarea("选定英文原文", "originalText", item.originalText, "各段之间留一空行", 5)
         + textarea("对应的中文译文", "translation", item.translation, "按原文顺序逐段翻译，各段之间留一空行", 5)
         + input("双语段落的 PDF 页码", "passagePages", item.passagePages)
+        + textarea("逐段中文导读", "passageNotes", passageLines(item.passageNotes), "每行例如 5/12-16｜中文导读，只有页码可写 5｜中文导读", 5)
         + textarea("要看哪些细节", "details", joined(item.details), "每行写一条关键细节");
     } else if (kind === "formula") {
       const symbols = Array.isArray(item.symbols) ? item.symbols.map((pair) => pair.join("｜")).join("\n") : "";
@@ -264,6 +282,7 @@
     for (const { temporary } of staged.values()) URL.revokeObjectURL(temporary);
     staged.clear();
     const source = note.source || {};
+    generatedFrom = note.generatedFrom;
     blocks.basics.innerHTML = `<div class="editor-grid">
       ${input("论文标题", "title", note.title, { maxlength: 600, required: true, wide: true })}
       <div class="editor-topic-field">
@@ -309,6 +328,7 @@
       heading: value(block, "heading"), why: value(block, "why"), details: splitLines(value(block, "details")),
       background: value(block, "background"), originalText: value(block, "originalText"),
       translation: value(block, "translation"), passagePages: value(block, "passagePages"),
+      passageNotes: readPassageLines(value(block, "passageNotes")),
       ...evidence(block, "section", index),
     }));
     const formulas = readBlocks("formula", (block, index) => ({
@@ -326,6 +346,7 @@
     }));
     const basics = blocks.basics;
     const note = {
+      generatedFrom,
       title: value(basics, "title"), category: value(basics, "category"), venue: value(basics, "venue"),
       reason: value(basics, "reason"), thesis: value(basics, "thesis"),
       tags: value(basics, "tags").split(/[,，、]/).map((tag) => tag.trim()).filter(Boolean),
@@ -430,7 +451,7 @@
       opened = await openPaper(new Uint8Array(bytes), (number, total) => {
         display(status, "正在定位原文，第 " + number + " / " + total + " 页…");
       }, get("research-pages").value.trim());
-      display(status, "模型正在整理章节、公式和数值例子…");
+      display(status, "模型正在整理原文段落、中文导读和核心公式…");
       const analysis = await api("/api/research/analyze", "POST", {
         modelId, pages: opened.pages, focus: get("research-focus").value.trim(), suppliedPdf: Boolean(file),
       });
@@ -460,17 +481,19 @@
         source: { landing: pdf ? url : value(blocks.basics, "landing"), pdf, version: "原文 PDF · " + opened.pageCount + " 页", note: scope },
       }, images);
       dirty = true;
-      const warnings = [draft.passageWarning, missed ? "有 " + missed + " 处裁图无法可靠定位，页码已保留。" : ""].filter(Boolean);
-      if (Array.isArray(draft.qualityIssues)) warnings.push(...draft.qualityIssues);
-      const warningList = quality.querySelector("ul");
-      warningList.replaceChildren(...warnings.map((warning) => {
+      const issues = Array.isArray(draft.qualityIssues) ? draft.qualityIssues.filter((issue) => typeof issue === "string") : [];
+      if (missed) issues.push("有 " + missed + " 处截图未能裁出，已保留原文页码。");
+      quality.querySelector("summary").textContent = issues.length ? "草稿检查 · " + issues.length + " 项待补" : "草稿检查 · 结构完整";
+      quality.querySelector("ul").replaceChildren(...(issues.length ? issues : ["保存前核对译文、公式和算术。"]).map((issue) => {
         const item = document.createElement("li");
-        item.textContent = warning;
+        item.textContent = issue;
         return item;
       }));
-      quality.hidden = warnings.length === 0;
-      quality.open = warnings.length > 0;
-      display(status, warnings.length ? "精读草稿已填入下方，请查看待复核项。" : "精读草稿已填入下方。已检查内容结构，保存前请核对原文、译文和计算。");
+      quality.open = issues.length > 0;
+      quality.hidden = false;
+      display(status, issues.length
+        ? "精读草稿已填入下方。请查看待补项，再核对和保存。"
+        : "精读草稿已填入下方。核对后点击保存论文。", issues.length > 0);
     } catch (error) {
       display(status, error.message || "生成精读失败，请稍后重试。", true);
     } finally {

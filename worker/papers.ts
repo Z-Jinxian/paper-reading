@@ -1,5 +1,6 @@
 import catalogue from "../content/catalogue.json";
-import type { Category, Formula, Note, Paper, PaperChange, Section, Source } from "./types";
+import { checkReadingDraft } from "./reading-skill";
+import type { Category, Formula, Note, Paper, PaperChange, PassageNote, Section, Source } from "./types";
 
 const builtInTopics: Category[] = catalogue.categories;
 const jsonNotes = import.meta.glob("../content/papers/*.json", { eager: true, import: "default" }) as unknown as Record<string, Note | undefined>;
@@ -134,6 +135,17 @@ function evidence(input: any, knownAssets: Set<string>) {
   return { asset, alt: clean(input?.alt, 260), page: pageNumber(input?.page) };
 }
 
+function passageNote(input: any): PassageNote {
+  const page = pageNumber(input?.page);
+  const from = pageNumber(input?.from);
+  const to = pageNumber(input?.to);
+  const summary = clean(input?.summary, 1400);
+  if (!page || !summary || (from === null) !== (to === null) || (from !== null && to !== null && from > to)) {
+    throw new PaperError(422, "段落导读须填写 PDF 页码、有效的行范围（如有）和中文解读。");
+  }
+  return { page, ...(from !== null && to !== null ? { from, to } : {}), summary };
+}
+
 function normalizeNote(raw: any, topics: Category[], previous?: Note): Note {
   const knownAssets = new Set([
     ...(previous?.sections || []), ...(previous?.formulas || []),
@@ -151,6 +163,7 @@ function normalizeNote(raw: any, topics: Category[], previous?: Note): Note {
   return {
     ...previous,
     title, category, source,
+    generatedFrom: raw.generatedFrom === "upload" || raw.generatedFrom === "link" ? raw.generatedFrom : previous?.generatedFrom,
     venue: clean(raw.venue, 280),
     reason: clean(raw.reason),
     thesis: clean(raw.thesis),
@@ -163,6 +176,7 @@ function normalizeNote(raw: any, topics: Category[], previous?: Note): Note {
       originalText: clean(item?.originalText),
       translation: clean(item?.translation),
       passagePages: clean(item?.passagePages, 200),
+      passageNotes: list(item?.passageNotes, passageNote, 8),
       ...evidence(item, knownAssets),
     }), 12),
     formulas: list(raw.formulas, (item): Formula => ({
@@ -231,7 +245,7 @@ async function uploadImages(form: FormData, note: Note, id: string, bucket?: R2B
 }
 
 function removeEmptyBlocks(note: Note) {
-  note.sections = note.sections.filter((item) => item.heading || item.why || item.details.length || item.asset || item.page || item.background || item.originalText || item.translation);
+  note.sections = note.sections.filter((item) => item.heading || item.why || item.details.length || item.asset || item.page || item.background || item.originalText || item.translation || item.passageNotes?.length);
   note.formulas = note.formulas.filter((item) => item.name || item.original || item.latex || item.symbols.length || item.steps.length || item.asset || item.page || item.scope || item.principle || item.numericExample);
 }
 
@@ -297,5 +311,6 @@ export function isComplete(note: Note) {
   const section = note.sections.length > 0 && note.sections.every((item) => item.heading && item.why && item.details.length && item.asset && item.page);
   const formula = note.formulas.length > 0 && note.formulas.every((item) => item.name && item.latex && item.steps.length && item.asset && item.page);
   const example = note.example;
-  return Boolean(section && formula && example.title && example.setup && example.steps.length >= 2 && example.takeaway);
+  const generatedComplete = !note.generatedFrom || !checkReadingDraft(note, note.generatedFrom === "upload").length;
+  return Boolean(section && formula && example.title && example.setup && example.steps.length >= 2 && example.takeaway && generatedComplete);
 }

@@ -72,10 +72,17 @@ function chapter(item: Section, note: Note, related: string) {
   const bilingual = item.originalText && item.translation ? bilingualPair(item.originalText, item.translation) : "";
   const passage = bilingual && item.passagePages ?
     `<p class="micro">双语段落 · PDF 第 ${escape(item.passagePages)} 页 ${firstSourcePage && pdf ? external(pdf.split("#")[0] + "#page=" + firstSourcePage, "打开原文 ↗") : ""}</p>` : "";
+  const notes = item.passageNotes?.map(({ page, from, to, summary }) => {
+    const location = "PDF 第 " + page + " 页";
+    const source = pdf ? external(pdf.split("#")[0] + "#page=" + page, location + " ↗") : location;
+    const range = from != null && to != null ? " · 提取行 " + from + "–" + to : "";
+    return `<li><div class="micro">${source}${range}</div>${paragraph(summary)}</li>`;
+  }).join("");
+  const passageNotes = notes ? "<h4>逐段中文导读</h4><ol>" + notes + "</ol>" : "";
   const principles = item.details.length ? "<h4>原理与读法</h4>" + items(item.details) : "";
   return `<section class="chapter-card">
     <div>${intro}</div>${image}
-    ${bilingual || principles ? `<div class="chapter-bilingual-text">${bilingual}${passage}${principles}</div>` : ""}
+    ${bilingual || passageNotes || principles ? `<div class="chapter-bilingual-text">${bilingual}${passage}${passageNotes}${principles}</div>` : ""}
     ${related ? `<div class="chapter-related">${related}</div>` : ""}
   </section>`;
 }
@@ -392,7 +399,7 @@ export function editorPage(paper: Paper, profiles: ModelProfile[], categories: C
             <label class="editor-field"><span>PDF 页码范围（选填）</span><input id="research-pages" maxlength="100" placeholder="例如 3-5,8，按 PDF 阅读器页码"></label>
           </div>
           <div class="auto-actions"><button class="hero-cta" id="generate-button" type="submit">生成精读草稿</button>
-            <p>生成时将 PDF 页面的文字发送给所选模型。草稿含背景、对照译文、公式原理和算例。选取本地 PDF 可生成完整段落对照，保存时保留笔记和截图。</p>
+            <p>填论文链接可生成原文定位、逐段中文导读和英中短摘录。上传本地 PDF 可生成完整段落的英中对照。两种方式都包含公式和算例，PDF 页面文字会发送给所选模型。<a href="${readingSkillPath}">精读 Skill</a></p>
           </div>
           <p id="generate-status" class="action-feedback" role="status" hidden></p>
           <details id="generate-quality" class="action-feedback has-error" hidden>

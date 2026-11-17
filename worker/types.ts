@@ -1,8 +1,10 @@
 export type Source = { landing: string; pdf: string; version: string; note?: string };
 export type Evidence = { asset: string; alt: string; page: number | null };
+export type PassageNote = { page: number; from?: number; to?: number; summary: string };
 export type Section = Evidence & {
   heading: string; why: string; details: string[];
   background?: string; originalText?: string; translation?: string; passagePages?: string;
+  passageNotes?: PassageNote[];
 };
 export type Formula = Evidence & {
   name: string; original: string; latex: string; symbols: [string, string][]; steps: string[]; scope: string;
@@ -13,6 +15,7 @@ export type Note = {
   title: string; category: string; venue: string; reason: string; tags: string[]; thesis: string;
   source: Source; sections: Section[]; formulas: Formula[]; example: Example; limits: string[];
   anchor?: string; age?: string; angle?: string; read?: string; reference?: string;
+  generatedFrom?: "upload" | "link";
 };
 export type Paper = { id: string; data: Note; revision: number; updatedAt: string | null; deletedAt: string | null };
 export type PaperChange = { id: string; data: string; revision: number; updated_at: string; deleted_at: string | null };
