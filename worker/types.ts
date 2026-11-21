@@ -12,6 +12,9 @@ export type Formula = Evidence & {
 };
 export type Example = { title: string; setup: string; steps: { label: string; text: string; latex?: string }[]; takeaway: string };
 export type Note = {
+  readingImportance?: number;
+  additionalCategories?: string[];
+  recommendation?: { date: string; importance: number; evidence: string };
   title: string; category: string; venue: string; reason: string; tags: string[]; thesis: string;
   source: Source; sections: Section[]; formulas: Formula[]; example: Example; limits: string[];
   anchor?: string; age?: string; angle?: string; read?: string; reference?: string;
@@ -20,3 +23,4 @@ export type Note = {
 export type Paper = { id: string; data: Note; revision: number; updatedAt: string | null; deletedAt: string | null };
 export type PaperChange = { id: string; data: string; revision: number; updated_at: string; deleted_at: string | null };
 export type Category = { id: string; label: string; question: string; description: string };
+

@@ -1,3 +1,4 @@
+import { catalogueGroups, compareReadingPriority } from "./reading-priority";
 import type { ModelProfile } from "./research";
 import katex from "katex";
 import home from "../content/index-template.html?raw";
@@ -265,8 +266,8 @@ export function readingPage(paper: Paper, categories: Category[], saved = false)
   </div>${dialog}`, "/notebook.js");
 }
 
-function catalogueCard({ id, data: note, revision }: Paper) {
-  return `<article class="recommendation paper-record" id="${escape(note.anchor || "ref-" + id)}" data-paper data-tags="${escape(JSON.stringify(note.tags))}">
+function catalogueCard({ id, data: note, revision }: Paper, topic: string, primaryTopic = topic === note.category) {
+  return `<article class="recommendation paper-record" id="${escape(primaryTopic ? (note.anchor || "ref-" + id) : topic + "-" + (note.anchor || "ref-" + id))}" data-paper data-paper-id="${escape(id)}" data-categories="${escape(JSON.stringify([note.category, ...(note.additionalCategories ?? []), topic]))}" data-tags="${escape(JSON.stringify(note.tags))}">
     <div class="paper-meta">
       ${note.angle ? '<span class="paper-angle">' + escape(note.angle) + "</span>" : ""}
       ${note.venue ? "<span>" + escape(note.venue) + "</span>" : ""}
@@ -289,8 +290,9 @@ function catalogueCard({ id, data: note, revision }: Paper) {
 
 export function homepage(papers: Paper[], categories: Category[], notice: string | null) {
   const active = papers.filter((paper) => !paper.deletedAt);
+  const displayedCategories = catalogueGroups(categories);
   const tags = [...new Set(active.flatMap((paper) => paper.data.tags))].sort();
-  const options = categories.map(({ id, label }) => `<option value="${escape(id)}">${escape(label)}</option>`).join("");
+  const options = categories.map(({ id, label }) => `<option value="${escape(id)}">${escape(id === "embodied-robotics" ? "具身智能、自动驾驶与机器人" : label)}</option>`).join("");
   const methods = tags.map((tag) => `<option value="${escape(tag)}">${escape(tag)}</option>`).join("");
   const feedback = notice === "removed" ? '论文已移入回收站。<a href="/manage?view=trash">查看回收站</a>' : "";
   const tools = `<p id="catalogue-status" class="action-feedback" role="status" ${feedback ? "" : "hidden"}>${feedback}</p>
@@ -303,25 +305,32 @@ export function homepage(papers: Paper[], categories: Category[], notice: string
     <div class="filter-status"><output id="paper-count" for="paper-query paper-topic paper-method" aria-live="polite"></output>
       <button id="clear-filters" type="button">清除筛选</button></div>
   </form><p id="paper-empty" class="empty-search" hidden>没有匹配的论文。可以换一个关键词或清除筛选。</p>`;
-  const groups = categories.map((category) => {
-    const group = active.filter((paper) => paper.data.category === category.id);
-    return `<section class="research-topic" id="${escape(category.id)}" data-topic>
+  const groups = displayedCategories.map((category) => {
+    const group = active.filter((paper) => category.memberIds.some(id =>
+      paper.data.category === id || paper.data.additionalCategories?.includes(id)));
+    if (category.id === "large-models" || category.id === "embodied-robotics") {
+      group.sort(compareReadingPriority);
+    }
+    return `<section class="research-topic" id="${escape(category.id)}" data-topic data-member-ids="${escape(JSON.stringify(category.memberIds))}">
       <header class="topic-header topic-heading">
         <h3>${escape(category.label)}</h3>${paragraph(category.question, "topic-question")}
         ${paragraph(category.description, "topic-description")}
       </header>
-      ${group.length ? '<div class="recommendation-list">' + group.map(catalogueCard).join("") + "</div>"
+      ${group.length ? '<div class="recommendation-list">' + group.map(paper => catalogueCard(paper, category.id, category.memberIds.includes(paper.data.category))).join("") + "</div>"
         : `<p class="empty-topic">这个专题还没有论文。<a href="/manage/new?topic=${encodeURIComponent(category.id)}">新增论文</a></p>`}
     </section>`;
   }).join("");
-  const topicLinks = categories.map(({ id, label }) =>
+  const topicLinks = displayedCategories.map(({ id, label }) =>
     `<a href="#${escape(id)}"><span>${escape(label)}</span><span class="toc-arrow" aria-hidden="true">↘</span></a>`).join("");
-  const railTopics = categories.map(({ id, label }) =>
+  const railTopics = displayedCategories.map(({ id, label }) =>
     `<a href="#${escape(id)}">${escape(label)}</a>`).join("");
+  const aliases = categories.filter(({ label }) => label === "自动驾驶")
+    .filter(({ id }) => !displayedCategories.some(category => category.id === id))
+    .map(({ id }) => `<a hidden id="${escape(id)}" href="#embodied-robotics" data-archive-anchor></a>`).join("");
   return home.replaceAll("@@PAPER_COUNT@@", String(active.length))
-    .replaceAll("@@TOPIC_COUNT@@", String(categories.length))
+    .replaceAll("@@TOPIC_COUNT@@", String(displayedCategories.length))
     .replace("<!-- PAPER_TOOLS -->", () => tools)
-    .replace("<!-- PAPER_GROUPS -->", () => groups)
+    .replace("<!-- PAPER_GROUPS -->", () => aliases + groups)
     .replace("<!-- TOPIC_LINKS -->", () => topicLinks)
     .replace("<!-- RAIL_TOPICS -->", () => railTopics)
     .replace("<!-- LIBRARY_DIALOGS -->", () => topicDialog + removeDialog);
@@ -455,3 +464,4 @@ export function modelsPage(profiles: ModelProfile[]) {
     <script id="model-data" type="application/json">${data}</script>
   </main>`, "/manage.js", true);
 }
+

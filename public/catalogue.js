@@ -17,33 +17,35 @@
       paper,
       text: normalize(node.querySelector("h3").textContent + " " + paper.textContent),
       tags: JSON.parse(paper.dataset.tags),
+      categories: JSON.parse(paper.dataset.categories || JSON.stringify([node.id])),
     })),
   }));
-  const total = groups.reduce((sum, group) => sum + group.papers.length, 0);
+  const total = new Set(groups.flatMap(group => group.papers.map(({ paper }) => paper.dataset.paperId))).size;
 
   function applyFilters() {
     const words = normalize(fields.q.value).split(/\s+/).filter(Boolean);
-    let visible = 0;
+    const visibleIds = new Set();
     let visibleEmptyTopic = false;
 
     for (const { node, papers } of groups) {
-      const matchesTopic = !fields.topic.value || node.id === fields.topic.value;
+      const memberIds = JSON.parse(node.dataset.memberIds || JSON.stringify([node.id]));
+      const matchesTopic = !fields.topic.value || memberIds.includes(fields.topic.value);
       let matches = 0;
-      for (const { paper, text, tags } of papers) {
+      for (const { paper, text, tags, categories } of papers) {
         const found = matchesTopic
+          && (!fields.topic.value || categories.includes(fields.topic.value))
           && (!fields.method.value || tags.includes(fields.method.value))
           && words.every((word) => text.includes(word));
         paper.hidden = !found;
-        if (found) matches += 1;
+        if (found) { matches += 1; visibleIds.add(paper.dataset.paperId); }
       }
       const showEmpty = matchesTopic && papers.length === 0 && !fields.method.value && words.length === 0;
       node.hidden = matches === 0 && !showEmpty;
       visibleEmptyTopic ||= showEmpty;
-      visible += matches;
     }
 
-    count.value = visible + " / " + total + " 篇";
-    empty.hidden = visible !== 0 || visibleEmptyTopic;
+    count.value = visibleIds.size + " / " + total + " 篇";
+    empty.hidden = visibleIds.size !== 0 || visibleEmptyTopic;
     clear.disabled = !Object.values(fields).some((field) => field.value);
   }
 
@@ -113,3 +115,4 @@
   readFilters();
   showHash();
 })();
+

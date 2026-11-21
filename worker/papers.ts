@@ -163,6 +163,11 @@ function normalizeNote(raw: any, topics: Category[], previous?: Note): Note {
   return {
     ...previous,
     title, category, source,
+    readingImportance: raw.readingImportance === undefined ? previous?.readingImportance
+      : Number.isFinite(raw.readingImportance) && raw.readingImportance >= 0 && raw.readingImportance <= 100
+        ? raw.readingImportance : (() => { throw new PaperError(422, "阅读优先度须为 0 到 100。"); })(),
+    additionalCategories: [...new Set(list(raw.additionalCategories ?? previous?.additionalCategories,
+      (id) => clean(id, 70), 12))].filter((id) => id !== category && topics.some((topic) => topic.id === id)),
     generatedFrom: raw.generatedFrom === "upload" || raw.generatedFrom === "link" ? raw.generatedFrom : previous?.generatedFrom,
     venue: clean(raw.venue, 280),
     reason: clean(raw.reason),
@@ -314,3 +319,4 @@ export function isComplete(note: Note) {
   const generatedComplete = !note.generatedFrom || !checkReadingDraft(note, note.generatedFrom === "upload").length;
   return Boolean(section && formula && example.title && example.setup && example.steps.length >= 2 && example.takeaway && generatedComplete);
 }
+
