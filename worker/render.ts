@@ -292,7 +292,7 @@ export function homepage(papers: Paper[], categories: Category[], notice: string
   const active = papers.filter((paper) => !paper.deletedAt);
   const displayedCategories = catalogueGroups(categories);
   const tags = [...new Set(active.flatMap((paper) => paper.data.tags))].sort();
-  const options = categories.map(({ id, label }) => `<option value="${escape(id)}">${escape(id === "embodied-robotics" ? "具身智能、自动驾驶与机器人" : label)}</option>`).join("");
+  const options = categories.map(({ id, label }) => `<option value="${escape(id)}">${escape(label)}</option>`).join("");
   const methods = tags.map((tag) => `<option value="${escape(tag)}">${escape(tag)}</option>`).join("");
   const feedback = notice === "removed" ? '论文已移入回收站。<a href="/manage?view=trash">查看回收站</a>' : "";
   const tools = `<p id="catalogue-status" class="action-feedback" role="status" ${feedback ? "" : "hidden"}>${feedback}</p>
@@ -308,7 +308,7 @@ export function homepage(papers: Paper[], categories: Category[], notice: string
   const groups = displayedCategories.map((category) => {
     const group = active.filter((paper) => category.memberIds.some(id =>
       paper.data.category === id || paper.data.additionalCategories?.includes(id)));
-    if (category.id === "large-models" || category.id === "embodied-robotics") {
+    if (category.id === "large-models" || category.id === "embodied-robotics" || category.label === "自动驾驶") {
       group.sort(compareReadingPriority);
     }
     return `<section class="research-topic" id="${escape(category.id)}" data-topic data-member-ids="${escape(JSON.stringify(category.memberIds))}">
@@ -324,13 +324,10 @@ export function homepage(papers: Paper[], categories: Category[], notice: string
     `<a href="#${escape(id)}"><span>${escape(label)}</span><span class="toc-arrow" aria-hidden="true">↘</span></a>`).join("");
   const railTopics = displayedCategories.map(({ id, label }) =>
     `<a href="#${escape(id)}">${escape(label)}</a>`).join("");
-  const aliases = categories.filter(({ label }) => label === "自动驾驶")
-    .filter(({ id }) => !displayedCategories.some(category => category.id === id))
-    .map(({ id }) => `<a hidden id="${escape(id)}" href="#embodied-robotics" data-archive-anchor></a>`).join("");
   return home.replaceAll("@@PAPER_COUNT@@", String(active.length))
     .replaceAll("@@TOPIC_COUNT@@", String(displayedCategories.length))
     .replace("<!-- PAPER_TOOLS -->", () => tools)
-    .replace("<!-- PAPER_GROUPS -->", () => aliases + groups)
+    .replace("<!-- PAPER_GROUPS -->", () => groups)
     .replace("<!-- TOPIC_LINKS -->", () => topicLinks)
     .replace("<!-- RAIL_TOPICS -->", () => railTopics)
     .replace("<!-- LIBRARY_DIALOGS -->", () => topicDialog + removeDialog);
