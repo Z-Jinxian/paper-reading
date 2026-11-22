@@ -1,3 +1,5 @@
+import { frontierLibrary } from "./frontier";
+import { technologySkillBody } from "./reading-skill";
 import { catalogueGroups, compareReadingPriority } from "./reading-priority";
 import type { ModelProfile } from "./research";
 import katex from "katex";
@@ -159,19 +161,20 @@ function layout(title: string, header: string, body: string, script?: string, ed
 </body></html>`;
 }
 
-export function readingSkillPage() {
-  const sections = readingSkillBody.split(/\n(?=## )/u).slice(1).map((section) => {
+export function readingSkillPage(technology = false, extra?: { title: string; markdown: string; path: string }) {
+  const title = extra?.title ?? (technology ? "最新技术 Skill" : "精读 Skill");
+  const sections = (extra ? extra.markdown.replace(/^---\r?\n[\s\S]*?\r?\n---\s*/u, "").trim() : technology ? technologySkillBody : readingSkillBody).split(/\n(?=## )/u).slice(1).map((section) => {
     const [heading, ...lines] = section.trim().split(/\r?\n/u);
     return `<section><h2>${escape(heading.slice(3))}</h2>
       ${items(lines.filter((line) => line.startsWith("- ")).map((line) => line.slice(2)))}</section>`;
   }).join("");
-  return layout("精读 Skill", catalogueLink + manageLink, `<main class="shell skill-page" id="paper-content">
+  return layout(title, catalogueLink + manageLink, `<main class="shell skill-page" id="paper-content">
     <article class="paper close-reading">
       <header class="paper-header">
-        <h1>精读 Skill</h1>
-        <p class="reading-text">每次生成草稿都会使用这套精读标准。英文从已定位的 PDF 行提取，生成后会标出需要复核的内容。</p>
+        <h1>${title}</h1>
+        <p class="reading-text">${technology ? "从泛 AI 研究中筛选权威且值得学习的技术论文，核对原理、实验与适用范围。" : "每次生成草稿都会使用这套精读标准。英文从已定位的 PDF 行提取，生成后会标出需要复核的内容。"}</p>
         <div class="paper-actions">
-          <a class="secondary-action" href="${readingSkillFilePath}" download="SKILL.md">下载 SKILL.md</a>
+          <a class="secondary-action" href="${extra ? extra.path + "/SKILL.md" : technology ? "/skills/technology-updates/SKILL.md" : readingSkillFilePath}" download="SKILL.md">下载 SKILL.md</a>
           <a class="hero-cta" href="/manage/new">生成论文精读</a>
         </div>
       </header>
@@ -291,6 +294,15 @@ function catalogueCard({ id, data: note, revision }: Paper, topic: string, prima
 export function homepage(papers: Paper[], categories: Category[], notice: string | null) {
   const active = papers.filter((paper) => !paper.deletedAt);
   const displayedCategories = catalogueGroups(categories);
+  const library = frontierLibrary(active, categories);
+  const technologySection = `<section class="page-section" id="latest-technology">
+    <header class="section-heading"><h2>最新技术</h2><p>每天补充一篇值得学习的泛 AI 技术论文，理解原理、关键证据和适用边界。<a href="/skills/technology-updates">筛选与精读规则</a></p></header>
+    ${library.technologies.map(item => `<article class="technology-note"${item.paperId ? ` data-technology-paper-id="${escape(item.paperId)}"` : ""}><span class="edition">${item.recommendedOn ? "选读 " + escape(item.recommendedOn) + " · " : ""}证据 ${escape(item.date)}</span>
+      <h3>${escape(item.name)}</h3>${item.paperId ? `<p><a href="${paperUrl(item.paperId)}">${escape(item.paperTitle)}</a></p>` : ""}${paragraph(item.meaning)}
+      <p><strong>改变了什么</strong>　${escape(item.change)}</p>
+      <p><strong>已验证的进展</strong>　${escape(item.evidence)}</p>
+      <p><strong>仍待检验</strong>　${escape(item.limit)}</p>${external(item.source,"查看原始研究")}${item.paperId ? ` · <a href="${paperUrl(item.paperId)}">阅读技术精读</a>` : ""}</article>`).join("")}</section>`;
+
   const tags = [...new Set(active.flatMap((paper) => paper.data.tags))].sort();
   const options = categories.map(({ id, label }) => `<option value="${escape(id)}">${escape(label)}</option>`).join("");
   const methods = tags.map((tag) => `<option value="${escape(tag)}">${escape(tag)}</option>`).join("");
@@ -326,7 +338,7 @@ export function homepage(papers: Paper[], categories: Category[], notice: string
     `<a href="#${escape(id)}">${escape(label)}</a>`).join("");
   return home.replaceAll("@@PAPER_COUNT@@", String(active.length))
     .replaceAll("@@TOPIC_COUNT@@", String(displayedCategories.length))
-    .replace("<!-- PAPER_TOOLS -->", () => tools)
+    .replace("<!-- PAPER_TOOLS -->", () => technologySection + tools)
     .replace("<!-- PAPER_GROUPS -->", () => groups)
     .replace("<!-- TOPIC_LINKS -->", () => topicLinks)
     .replace("<!-- RAIL_TOPICS -->", () => railTopics)
@@ -461,4 +473,5 @@ export function modelsPage(profiles: ModelProfile[]) {
     <script id="model-data" type="application/json">${data}</script>
   </main>`, "/manage.js", true);
 }
+
 

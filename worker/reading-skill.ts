@@ -1,5 +1,8 @@
+import technologySkill from "../skills/technology-updates/SKILL.md?raw";
 import skill from "../skills/paper-reading/SKILL.md?raw";
 
+export const technologySkillMarkdown = technologySkill;
+export const technologySkillBody = technologySkill.replace(/^---\r?\n[\s\S]*?\r?\n---\s*/u, "").trim();
 export const readingSkillPath = "/skills/paper-reading";
 export const readingSkillFilePath = readingSkillPath + "/SKILL.md";
 export const readingSkill = skill;
@@ -81,3 +84,4 @@ export function checkReadingDraft(draft: ReviewDraft, suppliedPdf: boolean): str
 
   return issues;
 }
+

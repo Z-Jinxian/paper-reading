@@ -1,6 +1,6 @@
 import catalogue from "../content/catalogue.json";
 import { checkReadingDraft } from "./reading-skill";
-import type { Category, Formula, Note, Paper, PaperChange, PassageNote, Section, Source } from "./types";
+import type { Category, Formula, Note, Paper, PaperChange, PassageNote, ReadingRecommendation, Section, Source } from "./types";
 
 const builtInTopics: Category[] = catalogue.categories;
 const jsonNotes = import.meta.glob("../content/papers/*.json", { eager: true, import: "default" }) as unknown as Record<string, Note | undefined>;
@@ -146,6 +146,26 @@ function passageNote(input: any): PassageNote {
   return { page, ...(from !== null && to !== null ? { from, to } : {}), summary };
 }
 
+function publicationDate(value: unknown): string {
+  const text = clean(value, 10);
+  const iso = text.length === 7 ? text + "-01" : text;
+  const parsed = new Date(iso + "T00:00:00Z");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso) || !Number.isFinite(parsed.valueOf()) || parsed.toISOString().slice(0,10) !== iso) {
+    throw new PaperError(422, "请填入核实的发表日期或月份。");
+  }
+  return text;
+}
+
+function readingRecommendation(value: any, previous?: ReadingRecommendation): ReadingRecommendation | undefined {
+  if (value === undefined) return previous;
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value.date)
+    || !Number.isFinite(value.importance) || value.importance < 0 || value.importance > 100) {
+    throw new PaperError(422, "推荐须包含 YYYY-MM-DD 日期和 0 到 100 的重要度。");
+  }
+  publicationDate(value.date);
+  return { date: value.date, importance: value.importance, evidence: clean(value.evidence, 12000) };
+}
+
 function normalizeNote(raw: any, topics: Category[], previous?: Note): Note {
   const knownAssets = new Set([
     ...(previous?.sections || []), ...(previous?.formulas || []),
@@ -168,6 +188,17 @@ function normalizeNote(raw: any, topics: Category[], previous?: Note): Note {
         ? raw.readingImportance : (() => { throw new PaperError(422, "阅读优先度须为 0 到 100。"); })(),
     additionalCategories: [...new Set(list(raw.additionalCategories ?? previous?.additionalCategories,
       (id) => clean(id, 70), 12))].filter((id) => id !== category && topics.some((topic) => topic.id === id)),
+    frontier: raw.frontier ? {
+      date: publicationDate(raw.frontier.date), firstPublic: clean(raw.frontier.firstPublic, 280),
+      lesson: clean(raw.frontier.lesson), evidence: clean(raw.frontier.evidence),
+    } : previous?.frontier,
+    paradigm: raw.paradigm ? {
+      name: clean(raw.paradigm.name, 160), meaning: clean(raw.paradigm.meaning),
+      change: clean(raw.paradigm.change), evidence: clean(raw.paradigm.evidence),
+      limit: clean(raw.paradigm.limit), source: url(raw.paradigm.source), date: publicationDate(raw.paradigm.date),
+    } : previous?.paradigm,
+    recommendation: readingRecommendation(raw.recommendation, previous?.recommendation),
+    technologyRecommendation: readingRecommendation(raw.technologyRecommendation, previous?.technologyRecommendation),
     generatedFrom: raw.generatedFrom === "upload" || raw.generatedFrom === "link" ? raw.generatedFrom : previous?.generatedFrom,
     venue: clean(raw.venue, 280),
     reason: clean(raw.reason),
@@ -256,15 +287,23 @@ function removeEmptyBlocks(note: Note) {
 
 const conflict = () => new PaperError(409, "这篇论文已在另一页面更新。请保留当前输入，再重新打开最新版本。");
 
-async function storeChange(db: D1Database, paper: Paper, expected: number) {
+async function storeChange(db: D1Database, paper: Paper, expected: number, newRecommendationDate?: string, newTechnologyDate?: string) {
+  // D1 evaluates the write and this date claim in the same SQLite statement.
+  const dateGuard = (newRecommendationDate
+    ? " AND NOT EXISTS (SELECT 1 FROM paper_changes WHERE deleted_at IS NULL AND json_extract(data, '$.recommendation.date') = ? AND id <> ?)"
+    : "") + (newTechnologyDate
+    ? " AND NOT EXISTS (SELECT 1 FROM paper_changes WHERE deleted_at IS NULL AND json_extract(data, '$.technologyRecommendation.date') = ? AND id <> ?)"
+    : "");
+  const claim = [...(newRecommendationDate ? [newRecommendationDate, paper.id] : []),
+    ...(newTechnologyDate ? [newTechnologyDate, paper.id] : [])];
   const data = JSON.stringify(paper.data);
   const result = expected === 0
     ? await db.prepare(
-        "INSERT OR IGNORE INTO paper_changes (id, data, revision, updated_at, deleted_at) VALUES (?, ?, 1, ?, ?)"
-      ).bind(paper.id, data, paper.updatedAt, paper.deletedAt).run()
+        "INSERT OR IGNORE INTO paper_changes (id, data, revision, updated_at, deleted_at) SELECT ?, ?, 1, ?, ? WHERE 1" + dateGuard
+      ).bind(paper.id, data, paper.updatedAt, paper.deletedAt, ...claim).run()
     : await db.prepare(
-        "UPDATE paper_changes SET data = ?, revision = revision + 1, updated_at = ?, deleted_at = ? WHERE id = ? AND revision = ?"
-      ).bind(data, paper.updatedAt, paper.deletedAt, paper.id, expected).run();
+        "UPDATE paper_changes SET data = ?, revision = revision + 1, updated_at = ?, deleted_at = ? WHERE id = ? AND revision = ?" + dateGuard
+      ).bind(data, paper.updatedAt, paper.deletedAt, paper.id, expected, ...claim).run();
   if (result.meta.changes !== 1) throw conflict();
   return { ...paper, revision: expected + 1 };
 }
@@ -290,10 +329,39 @@ export async function savePaper(request: Request, db: D1Database, bucket: R2Buck
   } catch {
     throw new PaperError(422, "无法读取论文笔记。");
   }
-  const data = normalizeNote(raw, await allTopics(db), previous?.data);
+  const topics = await allTopics(db);
+  const data = normalizeNote(raw, topics, previous?.data);
+  const claim = data.recommendation?.date !== previous?.data.recommendation?.date ? data.recommendation?.date : undefined;
+  if (claim) {
+    publicationDate(claim);
+    const domainIds = topics.filter(topic => topic.id === "large-models" || topic.id === "embodied-robotics" || topic.label === "自动驾驶").map(topic => topic.id);
+    if (![data.category, ...(data.additionalCategories ?? [])].some(id => domainIds.includes(id))) {
+      throw new PaperError(422, "每日推荐须同时归入至少一个领域板块。");
+    }
+    const library = await allPapers(db);
+    if (library.some(p => p.id !== id && !p.deletedAt && p.data.recommendation?.date === claim)) {
+      throw new PaperError(409, "该日已有推荐，请回读并继续维护精选。");
+    }
+  }
+  const technologyClaim = data.technologyRecommendation?.date !== previous?.data.technologyRecommendation?.date
+    ? data.technologyRecommendation?.date : undefined;
+  if (data.technologyRecommendation && (!data.paradigm || !data.paradigm.name || !data.paradigm.meaning
+    || !data.paradigm.change || !data.paradigm.evidence || !data.paradigm.limit || !data.paradigm.source)) {
+    throw new PaperError(422, "最新技术须补齐技术名称、原理、进展、证据、边界和一手来源。");
+  }
+  if (technologyClaim) {
+    const library = await allPapers(db);
+    if (library.some(p => p.id !== id && !p.deletedAt && p.data.technologyRecommendation?.date === technologyClaim)) {
+      throw new PaperError(409, "该日已有最新技术论文，请回读并继续补充该记录。");
+    }
+  }
+  if (data.technologyRecommendation && data.recommendation?.date === data.technologyRecommendation.date) {
+    throw new PaperError(422, "请为最新技术选择与当天每日推荐不同的论文。");
+  }
+
   await uploadImages(form, data, id, bucket);
   removeEmptyBlocks(data);
-  return storeChange(db, { id, data, revision: expected, updatedAt: new Date().toISOString(), deletedAt: null }, expected);
+  return storeChange(db, { id, data, revision: expected, updatedAt: new Date().toISOString(), deletedAt: null }, expected, claim, technologyClaim);
 }
 
 export async function changePaperStatus(request: Request, db: D1Database, id: string, remove: boolean) {
@@ -309,7 +377,8 @@ export async function changePaperStatus(request: Request, db: D1Database, id: st
   if (paper.revision !== expected) throw conflict();
   if (Boolean(paper.deletedAt) === remove) return paper;
   const now = new Date().toISOString();
-  return storeChange(db, { ...paper, updatedAt: now, deletedAt: remove ? now : null }, expected);
+  return storeChange(db, { ...paper, updatedAt: now, deletedAt: remove ? now : null }, expected,
+    remove ? undefined : paper.data.recommendation?.date, remove ? undefined : paper.data.technologyRecommendation?.date);
 }
 
 export function isComplete(note: Note) {
@@ -319,4 +388,5 @@ export function isComplete(note: Note) {
   const generatedComplete = !note.generatedFrom || !checkReadingDraft(note, note.generatedFrom === "upload").length;
   return Boolean(section && formula && example.title && example.setup && example.steps.length >= 2 && example.takeaway && generatedComplete);
 }
+
 

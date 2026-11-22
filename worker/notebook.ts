@@ -1,3 +1,7 @@
+import updateSkillMarkdown from "../skills/paper-updates/SKILL.md?raw";
+import screeningSkillMarkdown from "../skills/paper-screening/SKILL.md?raw";
+import { frontierLibrary } from "./frontier";
+import { technologySkillMarkdown } from "./reading-skill";
 import { analyzePdf, deleteModel, models, researchPdf, saveModel } from "./research";
 import { allPapers, allTopics, blankNote, changePaperStatus, createTopic, idPattern, imageNamePattern, PaperError, paperById, savePaper } from "./papers";
 import { editorPage, homepage, managementPage, messagePage, modelsPage, readingPage, readingSkillPage } from "./render";
@@ -21,28 +25,40 @@ function checkMutation(request: Request, url: URL) {
 export async function serveNotebook(request: Request, env: Cloudflare.Env): Promise<Response | undefined> {
   const url = new URL(request.url);
   const path = url.pathname;
+  const extraSkill = [
+    { path: "/skills/paper-updates", title: "定期论文推荐", markdown: updateSkillMarkdown },
+    { path: "/skills/paper-screening", title: "论文筛选 Skill", markdown: screeningSkillMarkdown },
+  ].find(item => path === item.path || path === item.path + "/" || path === item.path + "/SKILL.md");
   const research = path === "/api/research/pdf" || path === "/api/research/analyze";
   const modelRoute = path === "/api/models" || path.startsWith("/api/models/");
   const topicsRoute = path === "/api/topics";
-  const api = research || modelRoute || topicsRoute || path.startsWith("/api/papers/");
+  const libraryRoute = path === "/api/library";
+  const api = libraryRoute || research || modelRoute || topicsRoute || path.startsWith("/api/papers/");
   const media = path.startsWith("/paper-media/");
-  const skillPage = path === readingSkillPath || path === readingSkillPath + "/";
-  const skillDownload = path === readingSkillFilePath;
-  const sitePage = path === "/" || path === "/index.html" || path === "/models" || path === "/manage" || path.startsWith("/manage/") || path.startsWith("/papers/") || skillPage || skillDownload;
+  const technologySkill = path === "/skills/technology-updates" || path === "/skills/technology-updates/" || path === "/skills/technology-updates/SKILL.md";
+  const skillPage = technologySkill || path === readingSkillPath || path === readingSkillPath + "/";
+  const skillDownload = path === readingSkillFilePath || path === "/skills/technology-updates/SKILL.md";
+  const sitePage = Boolean(extraSkill) || path === "/" || path === "/index.html" || path === "/models" || path === "/manage" || path.startsWith("/manage/") || path.startsWith("/papers/") || skillPage || skillDownload;
   if (!api && !media && !sitePage) return;
 
   try {
+    if (extraSkill) {
+      if (request.method !== "GET" && request.method !== "HEAD") return new Response(null, {status:405,headers});
+      const markdown = path.endsWith("/SKILL.md");
+      return new Response(request.method === "HEAD" ? null : markdown ? extraSkill.markdown : readingSkillPage(false,extraSkill),
+        {headers:{...headers,"content-type":markdown ? "text/markdown; charset=utf-8" : "text/html; charset=utf-8"}});
+    }
     if (skillPage || skillDownload) {
       const { method } = request;
       if (method !== "GET" && method !== "HEAD") {
         return new Response(null, { status: 405, headers: { ...headers, allow: "GET, HEAD" } });
       }
       if (skillDownload) {
-        return new Response(method === "HEAD" ? null : readingSkill, {
+        return new Response(method === "HEAD" ? null : (technologySkill ? technologySkillMarkdown : readingSkill), {
           headers: { ...headers, "content-type": "text/markdown; charset=utf-8", "content-disposition": 'attachment; filename="SKILL.md"' },
         });
       }
-      return new Response(method === "HEAD" ? null : readingSkillPage(), {
+      return new Response(method === "HEAD" ? null : readingSkillPage(technologySkill), {
         headers: { ...headers, "content-type": "text/html; charset=utf-8" },
       });
     }
@@ -65,6 +81,12 @@ export async function serveNotebook(request: Request, env: Cloudflare.Env): Prom
     if (!env.DB) throw new PaperError(503, "论文库暂时无法连接，请稍后刷新。");
     if (api) {
       checkMutation(request, url);
+      if (libraryRoute) {
+        if (request.method !== "GET") return json({ error: "这个请求方式不可用。" }, 405);
+        const [papers, topics] = await Promise.all([allPapers(env.DB), allTopics(env.DB)]);
+        const { start, today, models, embodied, robotics, driving, technologies } = frontierLibrary(papers, topics);
+        return json({ papers, topics, frontier: { start, today, models: models.map(p => p.id), embodied: embodied.map(p => p.id), robotics: robotics.map(p => p.id), driving: driving.map(p => p.id), technologies } });
+      }
       if (topicsRoute) {
         if (request.method !== "POST") return json({ error: "这个请求方式不可用。" }, 405);
         const data = await request.json<{ name?: unknown }>().catch(() => null);
@@ -139,3 +161,4 @@ export async function serveNotebook(request: Request, env: Cloudflare.Env): Prom
     return api ? json({ error: message }, status) : html(messagePage("暂时无法打开", message), status);
   }
 }
+
