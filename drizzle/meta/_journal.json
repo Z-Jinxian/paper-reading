@@ -22,6 +22,20 @@
       "when": 1794455631774,
       "tag": "0002_paper_topics",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1795531599436,
+      "tag": "0003_industry_frontier",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1795532042332,
+      "tag": "0004_frontier_digest_receipts",
+      "breakpoints": true
     }
   ]
 }

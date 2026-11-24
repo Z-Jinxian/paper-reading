@@ -4,7 +4,7 @@ import type { Category, Paper } from "./types";
 const priorities: Record<string, number | undefined> = initialPriorities;
 
 export function readingImportance(paper: Paper) {
-  return paper.data.readingImportance ?? paper.data.recommendation?.importance ?? priorities[paper.id] ?? 0;
+  return paper.data.readingImportance ?? priorities[paper.id] ?? paper.data.recommendation?.importance ?? paper.data.technologyRecommendation?.importance ?? -1;
 }
 
 export function compareReadingPriority(a: Paper, b: Paper) {
@@ -18,7 +18,7 @@ export function catalogueGroups(categories: Category[]) {
   return categories.map(category => ({
     ...category,
     description: category.id === "large-models" || category.id === "embodied-robotics" || category.label === "自动驾驶"
-      ? "按实验决策价值、证据质量与长期阅读价值排序。" : category.description,
+      ? "按范式贡献、实验证据与可迁移的阅读价值排序。" : category.description,
     memberIds: [category.id],
   }));
 }

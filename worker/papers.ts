@@ -355,9 +355,6 @@ export async function savePaper(request: Request, db: D1Database, bucket: R2Buck
       throw new PaperError(409, "该日已有最新技术论文，请回读并继续补充该记录。");
     }
   }
-  if (data.technologyRecommendation && data.recommendation?.date === data.technologyRecommendation.date) {
-    throw new PaperError(422, "请为最新技术选择与当天每日推荐不同的论文。");
-  }
 
   await uploadImages(form, data, id, bucket);
   removeEmptyBlocks(data);

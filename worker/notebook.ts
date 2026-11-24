@@ -1,3 +1,6 @@
+import { digestReceipts, industryState, recordDelivery, saveCheck, saveEvent } from "./industry";
+import { buildFeeds } from "./feeds";
+import { makeDigest, eventPage, feedSections } from "./feed-view";
 import updateSkillMarkdown from "../skills/paper-updates/SKILL.md?raw";
 import screeningSkillMarkdown from "../skills/paper-screening/SKILL.md?raw";
 import { frontierLibrary } from "./frontier";
@@ -33,12 +36,14 @@ export async function serveNotebook(request: Request, env: Cloudflare.Env): Prom
   const modelRoute = path === "/api/models" || path.startsWith("/api/models/");
   const topicsRoute = path === "/api/topics";
   const libraryRoute = path === "/api/library";
-  const api = libraryRoute || research || modelRoute || topicsRoute || path.startsWith("/api/papers/");
+  const feedApi = path === "/api/frontier" || path.startsWith("/api/frontier/");
+  const api = feedApi || libraryRoute || research || modelRoute || topicsRoute || path.startsWith("/api/papers/");
   const media = path.startsWith("/paper-media/");
   const technologySkill = path === "/skills/technology-updates" || path === "/skills/technology-updates/" || path === "/skills/technology-updates/SKILL.md";
   const skillPage = technologySkill || path === readingSkillPath || path === readingSkillPath + "/";
   const skillDownload = path === readingSkillFilePath || path === "/skills/technology-updates/SKILL.md";
-  const sitePage = Boolean(extraSkill) || path === "/" || path === "/index.html" || path === "/models" || path === "/manage" || path.startsWith("/manage/") || path.startsWith("/papers/") || skillPage || skillDownload;
+  const feedPage = path.startsWith("/frontier/") || path === "/frontier-digest" || path === "/frontier-feed";
+  const sitePage = feedPage || Boolean(extraSkill) || path === "/" || path === "/index.html" || path === "/models" || path === "/manage" || path.startsWith("/manage/") || path.startsWith("/papers/") || skillPage || skillDownload;
   if (!api && !media && !sitePage) return;
 
   try {
@@ -81,11 +86,34 @@ export async function serveNotebook(request: Request, env: Cloudflare.Env): Prom
     if (!env.DB) throw new PaperError(503, "论文库暂时无法连接，请稍后刷新。");
     if (api) {
       checkMutation(request, url);
+      if (feedApi) {
+        if (path === "/api/frontier/digest" && request.method === "GET") {
+          const [papers,topics,state,receipts] = await Promise.all([allPapers(env.DB),allTopics(env.DB),industryState(env.DB),digestReceipts(env.DB)]);
+          return json(makeDigest(papers,topics,state,url.origin,receipts));
+        }
+        const receipt = /^\/api\/frontier\/deliveries\/(\d{4}-\d\d-\d\d)$/.exec(path);
+        if (receipt && request.method === "PUT") return json(await recordDelivery(request,env.DB,receipt[1]));
+        if (path === "/api/frontier" && request.method === "GET") {
+          const [papers,topics,state] = await Promise.all([allPapers(env.DB),allTopics(env.DB),industryState(env.DB)]);
+          const feeds = buildFeeds(papers, topics, state, new Date(), url.searchParams.get("order") === "time");
+          return json({ ...state, daily: feeds.daily, technology: feeds.technology });
+        }
+        const change = /^\/api\/frontier\/(events|checks)\/([a-z0-9-]+)$/.exec(path);
+        if (!change) throw new PaperError(404, "找不到这个前沿记录。");
+        if (request.method !== "PUT") return json({ error: "请使用 PUT。" }, 405);
+        return json(change[1] === "events" ? await saveEvent(request, env.DB, change[2]) : await saveCheck(request, env.DB, change[2]));
+      }
       if (libraryRoute) {
         if (request.method !== "GET") return json({ error: "这个请求方式不可用。" }, 405);
-        const [papers, topics] = await Promise.all([allPapers(env.DB), allTopics(env.DB)]);
-        const { start, today, models, embodied, robotics, driving, technologies } = frontierLibrary(papers, topics);
-        return json({ papers, topics, frontier: { start, today, models: models.map(p => p.id), embodied: embodied.map(p => p.id), robotics: robotics.map(p => p.id), driving: driving.map(p => p.id), technologies } });
+        const [papers, topics, state] = await Promise.all([allPapers(env.DB), allTopics(env.DB), industryState(env.DB)]);
+        const { start, today, models, embodied, robotics, driving } = frontierLibrary(papers, topics);
+        const feeds = buildFeeds(papers, topics, state, new Date(), url.searchParams.get("order") === "time");
+        const technologies = feeds.technology.map(i => ({ name:i.title, meaning:i.summary, change:i.change,
+          evidence:i.evidence, limit:i.limit, source:i.sources[0]?.url, date:i.published, importance:i.score,
+          paperId:i.paperId, paperTitle:papers.find(p => p.id === i.paperId)?.data.title, recommendedOn:i.selected,
+          id:i.id, major:i.major, href:i.href, kind:i.kind }));
+        return json({ papers, topics, frontier: { start, today, models:models.map(p => p.id), embodied:embodied.map(p => p.id),
+          robotics:robotics.map(p => p.id), driving:driving.map(p => p.id), technologies, daily:feeds.daily, checks:state.checks } });
       }
       if (topicsRoute) {
         if (request.method !== "POST") return json({ error: "这个请求方式不可用。" }, 405);
@@ -126,9 +154,19 @@ export async function serveNotebook(request: Request, env: Cloudflare.Env): Prom
     if (request.method !== "GET" && request.method !== "HEAD") {
       return html(messagePage("无法打开页面", "请从论文库导航进入。"), 405);
     }
-    if (path === "/" || path === "/index.html") {
-      const [papers, topics] = await Promise.all([allPapers(env.DB), allTopics(env.DB)]);
-      return html(homepage(papers, topics, url.searchParams.get("notice")));
+    if (feedPage || path === "/" || path === "/index.html") {
+      const [papers,topics,state] = await Promise.all([allPapers(env.DB), allTopics(env.DB), industryState(env.DB)]);
+      const latest = url.searchParams.get("order") === "time";
+      if (path === "/frontier-digest") return html(makeDigest(papers,topics,state,url.origin,await digestReceipts(env.DB)).html);
+      if (path === "/frontier-feed") return html(feedSections(papers,topics,state,latest));
+      if (path.startsWith("/frontier/")) {
+        const item = state.events.find(e => e.id === path.slice(10));
+        if (!item || (item.paperId && !papers.some(p => p.id === item.paperId && !p.deletedAt))) {
+          return html(messagePage("找不到这条进展", "可查看最新技术。","/#latest-technology","最新技术"),404);
+        }
+        return html(eventPage(item));
+      }
+      return html(homepage(papers,topics,url.searchParams.get("notice"),state,latest));
     }
     if (path === "/manage" || path === "/manage/") {
       const [papers, topics] = await Promise.all([allPapers(env.DB), allTopics(env.DB)]);

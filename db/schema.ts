@@ -23,3 +23,24 @@ export const paperTopics = sqliteTable("paper_topics", {
   nameKey: text("name_key").notNull().unique(),
   createdAt: text("created_at").notNull(),
 });
+
+export const industryEvents = sqliteTable("industry_events", {
+  id: text("id").primaryKey().notNull(),
+  sourceKey: text("source_key").notNull().unique(),
+  data: text("data").notNull(),
+  revision: integer("revision").notNull(),
+  firstSeen: text("first_seen").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const industryChecks = sqliteTable("industry_checks", {
+  domain: text("domain").primaryKey().notNull(),
+  checkedAt: text("checked_at").notNull(),
+  data: text("data").notNull(),
+});
+
+export const frontierDigests = sqliteTable("frontier_digests", {
+  day: text("day").primaryKey().notNull(),
+  through: text("through").notNull(),
+  messageId: text("message_id").notNull(),
+});

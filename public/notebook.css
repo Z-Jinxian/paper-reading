@@ -684,3 +684,14 @@ dialog::backdrop { background: #20294ce0; }
   .mast-nav { gap: 8px; }
   .mast-nav .mast-link { font-size: .76rem; }
 }
+
+.feed-order { display:flex; gap:.85rem; margin:.7rem 0; }
+.feed-order a { padding:.18rem .5rem; font-size:.9rem; text-underline-offset:.2em; }
+.feed-order [aria-current="true"] { font-weight:700; color:var(--ink); background:var(--accent-soft); border-radius:.25rem; }
+.frontier-checks { margin:.5rem 0 1rem; color:var(--muted); font-size:.9rem; }
+.frontier-checks summary { cursor:pointer; }
+.frontier-alert { font-weight:700; color:#a3182c; }
+#daily-recommendations .is-major, #latest-technology .is-major { border-left:4px solid #a3182c; }
+#daily-recommendations .is-major h3 a, #latest-technology .is-major h3 a { color:#a3182c; font-weight:750; }
+.frontier-detail { max-width:50rem; margin:2rem auto; line-height:1.8; }
+.frontier-detail h1 { font-size:clamp(1.5rem,3vw,2.3rem); line-height:1.3; }

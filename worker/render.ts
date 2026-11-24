@@ -1,4 +1,5 @@
-import { frontierLibrary } from "./frontier";
+import { domainEvents, feedSections } from "./feed-view";
+import type { IndustryState } from "./industry";
 import { technologySkillBody } from "./reading-skill";
 import { catalogueGroups, compareReadingPriority } from "./reading-priority";
 import type { ModelProfile } from "./research";
@@ -291,18 +292,10 @@ function catalogueCard({ id, data: note, revision }: Paper, topic: string, prima
   </article>`;
 }
 
-export function homepage(papers: Paper[], categories: Category[], notice: string | null) {
+export function homepage(papers: Paper[], categories: Category[], notice: string | null, state: IndustryState = {events:[], checks:[]}, latest = false) {
   const active = papers.filter((paper) => !paper.deletedAt);
   const displayedCategories = catalogueGroups(categories);
-  const library = frontierLibrary(active, categories);
-  const technologySection = `<section class="page-section" id="latest-technology">
-    <header class="section-heading"><h2>最新技术</h2><p>每天补充一篇值得学习的泛 AI 技术论文，理解原理、关键证据和适用边界。<a href="/skills/technology-updates">筛选与精读规则</a></p></header>
-    ${library.technologies.map(item => `<article class="technology-note"${item.paperId ? ` data-technology-paper-id="${escape(item.paperId)}"` : ""}><span class="edition">${item.recommendedOn ? "选读 " + escape(item.recommendedOn) + " · " : ""}证据 ${escape(item.date)}</span>
-      <h3>${escape(item.name)}</h3>${item.paperId ? `<p><a href="${paperUrl(item.paperId)}">${escape(item.paperTitle)}</a></p>` : ""}${paragraph(item.meaning)}
-      <p><strong>改变了什么</strong>　${escape(item.change)}</p>
-      <p><strong>已验证的进展</strong>　${escape(item.evidence)}</p>
-      <p><strong>仍待检验</strong>　${escape(item.limit)}</p>${external(item.source,"查看原始研究")}${item.paperId ? ` · <a href="${paperUrl(item.paperId)}">阅读技术精读</a>` : ""}</article>`).join("")}</section>`;
-
+  const feeds = feedSections(active, categories, state, latest);
   const tags = [...new Set(active.flatMap((paper) => paper.data.tags))].sort();
   const options = categories.map(({ id, label }) => `<option value="${escape(id)}">${escape(label)}</option>`).join("");
   const methods = tags.map((tag) => `<option value="${escape(tag)}">${escape(tag)}</option>`).join("");
@@ -328,6 +321,7 @@ export function homepage(papers: Paper[], categories: Category[], notice: string
         <h3>${escape(category.label)}</h3>${paragraph(category.question, "topic-question")}
         ${paragraph(category.description, "topic-description")}
       </header>
+      ${domainEvents(state, category, papers)}
       ${group.length ? '<div class="recommendation-list">' + group.map(paper => catalogueCard(paper, category.id, category.memberIds.includes(paper.data.category))).join("") + "</div>"
         : `<p class="empty-topic">这个专题还没有论文。<a href="/manage/new?topic=${encodeURIComponent(category.id)}">新增论文</a></p>`}
     </section>`;
@@ -338,7 +332,8 @@ export function homepage(papers: Paper[], categories: Category[], notice: string
     `<a href="#${escape(id)}">${escape(label)}</a>`).join("");
   return home.replaceAll("@@PAPER_COUNT@@", String(active.length))
     .replaceAll("@@TOPIC_COUNT@@", String(displayedCategories.length))
-    .replace("<!-- PAPER_TOOLS -->", () => technologySection + tools)
+    .replace("<!-- FRONTIER -->", () => feeds)
+    .replace("<!-- PAPER_TOOLS -->", () => tools)
     .replace("<!-- PAPER_GROUPS -->", () => groups)
     .replace("<!-- TOPIC_LINKS -->", () => topicLinks)
     .replace("<!-- RAIL_TOPICS -->", () => railTopics)
